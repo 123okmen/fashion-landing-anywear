@@ -10,6 +10,18 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,600&family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Syne:wght@600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css" />
+  <!-- Structured Data for ShopAnywear / Anywear Widget Product Detection -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "ProductGroup",
+    "name": "Lalin × Stressmama × Minde — Anywear Store Collection",
+    "url": "https://shopanywear.com/store/",
+    "description": "69 thiết kế Áo Tơ Tằm, Cổ Yếm & Gấm tích hợp công nghệ thử đồ ảo Anywear AI (YouCam VTO + Gemini Stylist + ShopAnywear Live)."
+  }
+  </script>
+  <!-- Official ShopAnywear.com Embed Widget -->
+  <script src="https://anywear.decart.ai/widget/latest/anywear.js" defer></script>
 </head>
 <body>
   <!-- Film Grain Texture Overlay (Stressmama Raw Visual Aesthetic) -->
@@ -238,8 +250,8 @@
         </form>
 
         <div class="aw-hub-foot">
-          <span>🔒 AI Pose &amp; Mesh Warp xử lý 60FPS trực tiếp trên trình duyệt — khớp vừa khít vai, ngực, eo khi bạn cử động.</span>
-          <a href="https://chromewebstore.google.com/detail/anywear-virtual-try-on/hijnklblgecbdlhjiofhlhjpndpifejh" target="_blank" rel="noopener" id="hubOfficialLink">Cài Chrome Extension AnyWear ↗</a>
+          <span>🔒 Tích hợp API <strong>uiharu-kazari/anywear</strong> (Skin AI + box_2d Crop + Stylist Verdict) &amp; <strong>ShopAnywear.com</strong>.</span>
+          <a href="https://shopanywear.com/store/" target="_blank" rel="noopener" id="hubOfficialLink">Thử đồ trên ShopAnywear.com/store ↗</a>
         </div>
       </div>
     </div>
@@ -471,6 +483,27 @@
             Giữ để xem cơ thể gốc
           </button>
 
+          <!-- Interactive Before / After Split Mirror Divider (from uiharu-kazari/anywear BeforeAfter.tsx) -->
+          <div class="aw-before-after-bar" id="studioBeforeAfterBar" hidden>
+            <div class="aw-ba-line" id="studioBaLine" style="left: 50%;">
+              <span class="aw-ba-handle">⇄</span>
+            </div>
+            <span class="aw-ba-tag before">TRƯỚC (CƠ THỂ GỐC)</span>
+            <span class="aw-ba-tag after">SAU (AI VTO FIT)</span>
+          </div>
+
+          <!-- Gemini Vision box_2d Garment Detection Overlay (from uiharu-kazari/anywear MirrorStage.tsx) -->
+          <div class="aw-box2d-overlay" id="studioBox2dOverlay" hidden>
+            <div class="aw-box2d-stage" id="studioBox2dStage">
+              <img id="studioBox2dImg" src="" alt="Screenshot garment detection" />
+              <div id="studioBox2dBoxes" class="aw-box2d-boxes"></div>
+            </div>
+            <div class="aw-box2d-foot">
+              <span id="studioBox2dHint">AI đã phát hiện các vùng trang phục (box_2d) — bấm chọn món đồ để cắt &amp; mặc thử:</span>
+              <button type="button" class="dock-mini-btn" id="closeBox2dOverlayBtn">Đóng</button>
+            </div>
+          </div>
+
           <!-- Drag & Drop Overlay inside Studio -->
           <div class="aw-stage-drop-overlay" id="studioDropOverlay" aria-hidden="true">
             <div class="aw-drop-inner">
@@ -490,7 +523,7 @@
                 <input
                   type="url"
                   id="studioLinkInput"
-                  placeholder="Dán link ảnh hoặc link sản phẩm (Lalin, Pinterest, Google Images...)"
+                  placeholder="Dán link ảnh hoặc link sản phẩm (Lalin, ShopAnywear.com, Pinterest...)"
                 />
                 <button type="submit" class="btn-aw-use-link">Dùng Link</button>
               </form>
@@ -534,11 +567,11 @@
             <button type="button" class="dock-mini-btn" id="studioFlipCamBtn" title="Đổi Camera Trước / Sau" hidden>
               🔄 Đổi Cam
             </button>
-            <button type="button" class="dock-mini-btn active" id="studioAutoTrackBtn" title="Tự động biến dạng lưới áo 3D (Mesh Warp) khớp với chuyển động vai, ngực, eo">
-              🎯 Khớp Cơ Thể: BẬT
+            <button type="button" class="dock-mini-btn" id="studioBeforeAfterBtn" title="Bật thanh kéo so sánh Trước / Sau (Before/After Mirror từ uiharu-kazari/anywear)">
+              ⇄ Trước/Sau
             </button>
-            <button type="button" class="dock-mini-btn active" id="studioBgMatteBtn" title="AI tự động tách rời trang phục khỏi người mẫu gốc &amp; xóa nền">
-              ✨ AI Tách Áo
+            <button type="button" class="dock-mini-btn" id="studioDetectBox2dBtn" title="Quét tách vùng trang phục box_2d [ymin,xmin,ymax,xmax] bằng AI Vision">
+              🔍 Quét box_2d
             </button>
             <button type="button" class="dock-mini-btn" id="studioMeshDebugBtn" title="Hiển thị khung xương AI 33 điểm &amp; lưới biến dạng trang phục 96 tam giác">
               🦴 Lưới AI
@@ -547,11 +580,11 @@
         </div>
       </div>
 
-      <!-- Right: AnyWear Controls, Size Chart & Minde Rent / Buy Booking -->
+      <!-- Right: AnyWear Controls, uiharu-kazari/anywear AI Suite & Minde Rent / Buy Booking -->
       <div class="studio-controls-panel">
         <div class="studio-header-row">
           <div>
-            <span class="ref-tag" id="studioProductCategory">LALIN.VN × ANYWEAR.LIVE</span>
+            <span class="ref-tag" id="studioProductCategory">LALIN.VN × SHOPANYWEAR.COM</span>
             <h3 id="studioProductTitle" style="font-family: var(--font-serif); font-size: 26px;">
               Áo Tơ Tằm Cổ Yếm Hạ Lam
             </h3>
@@ -559,19 +592,84 @@
           <button type="button" class="close-studio-btn" id="closeAnywearModalBtn" title="Đóng (Esc)">✕</button>
         </div>
 
-        <!-- Official AnyWear.Live Cloud Bridge Banner -->
+        <!-- Official ShopAnywear.com Store & API Engine Banner -->
         <div class="aw-cloud-bridge-box">
           <div>
-            <span class="aw-bridge-label">CHẾ ĐỘ AI ENGINE</span>
+            <span class="aw-bridge-label">ANYWEAR API ENGINE (UIHARU-KAZARI × SHOPANYWEAR)</span>
             <div class="aw-tier-pills" role="group" aria-label="Chọn chế độ AnyWear">
               <button type="button" class="aw-tier-pill" data-aw-tier="flash">Flash · Nhanh</button>
-              <button type="button" class="aw-tier-pill active" data-aw-tier="standard">Standard · Mượt</button>
-              <button type="button" class="aw-tier-pill" data-aw-tier="ultra">Ultra · Siêu Thực</button>
+              <button type="button" class="aw-tier-pill active" data-aw-tier="standard">Cloth-v4 · Chuẩn</button>
+              <button type="button" class="aw-tier-pill" data-aw-tier="ultra">Ultra · 3D Mesh</button>
             </div>
           </div>
-          <button type="button" class="btn-aw-external" id="openOfficialAnywearPopupBtn" title="Mở sản phẩm này trực tiếp trong cửa sổ nổi anywear.live/try-on">
-            Mở trên AnyWear.Live ↗
-          </button>
+          <a href="https://shopanywear.com/store/" target="_blank" rel="noopener" class="btn-aw-external" id="openOfficialAnywearPopupBtn" title="Mở kho thử đồ trực tiếp trên https://shopanywear.com/store/">
+            Thử đồ trên ShopAnywear.com ↗
+          </a>
+        </div>
+
+        <!-- NEW: AI Stylist Verdict Hang-Tag + Occasion Selector (from uiharu-kazari/anywear VerdictTag.tsx & Studio.tsx) -->
+        <div class="control-group aw-api-verdict-group">
+          <div class="control-group-title">
+            <span>✦ AI STYLIST VERDICT &amp; DỊP MẶC (/api/stylist/verdict)</span>
+            <button type="button" class="aw-mini-action-link" id="rejudgeVerdictBtn">Đánh giá lại ↻</button>
+          </div>
+          <div class="aw-occasion-chips" id="studioOccasionChips">
+            <button type="button" class="aw-occ-chip active" data-occasion="Dạo phố thường ngày">Dạo phố</button>
+            <button type="button" class="aw-occ-chip" data-occasion="Công sở thanh lịch">Công sở</button>
+            <button type="button" class="aw-occ-chip" data-occasion="Buổi hẹn đầu tiên">Hẹn hò đầu</button>
+            <button type="button" class="aw-occ-chip" data-occasion="Khách mời tiệc cưới">Tiệc cưới</button>
+            <button type="button" class="aw-occ-chip" data-occasion="Dạ tiệc đêm sang trọng">Dạ tiệc đêm</button>
+            <button type="button" class="aw-occ-chip" data-occasion="Chụp ảnh Lookbook">Lookbook</button>
+          </div>
+
+          <!-- Swinging Garment Hang-Tag -->
+          <div class="aw-verdict-hangtag" id="studioVerdictHangtag">
+            <div class="aw-hangtag-hole"></div>
+            <div class="aw-verdict-top">
+              <span class="aw-verdict-badge wear_it" id="verdictBadgeLabel">✓ Wear it · Mặc ngay</span>
+              <span class="aw-verdict-score" id="verdictScoreValue">96/100</span>
+            </div>
+            <p class="aw-verdict-headline" id="verdictHeadlineText">
+              “Phom lụa tơ tằm tôn bờ vai thanh thoát và cực kỳ ăn ảnh dưới ánh sáng tự nhiên.”
+            </p>
+            <ul class="aw-verdict-reasons" id="verdictReasonsList"></ul>
+            <div class="aw-verdict-harmony" id="verdictHarmonyBox">
+              Hợp tông da hôm nay: Sắc áo giúp trung hòa sắc đỏ nhẹ và làm sáng vùng xương quai xanh.
+            </div>
+            <div class="aw-verdict-pairings" id="verdictPairingChips"></div>
+          </div>
+        </div>
+
+        <!-- NEW: YouCam AI Skin Analysis & Daily Color Palette Brief (from uiharu-kazari/anywear SkinPanel.tsx) -->
+        <div class="control-group aw-api-skin-group">
+          <div class="control-group-title">
+            <span>✦ SKIN TODAY &amp; BẢNG MÀU HỢP DA (/api/skin/brief)</span>
+            <div style="display: flex; gap: 6px;">
+              <button type="button" class="aw-mini-action-link" id="uploadSelfieSkinBtn">+ Ảnh Selfie</button>
+              <button type="button" class="aw-mini-action-link" id="runSkinAiBtn">Đọc Da AI ✨</button>
+              <input type="file" id="skinSelfieFileInput" accept="image/*" hidden />
+            </div>
+          </div>
+
+          <div class="aw-skin-scores-grid" id="skinScoresGrid"></div>
+
+          <div class="aw-skin-brief-box" id="skinBriefBox">
+            <div class="aw-skin-brief-headline" id="skinBriefHeadline">“Làn da đủ ẩm, độ rạng rỡ tốt — ưu tiên tông tơ ngọc &amp; pastel dịu”</div>
+            <p class="aw-skin-brief-summary" id="skinBriefSummary">
+              Chỉ số Độ ẩm (88) và Độ mịn (85) nổi bật. Nên ưu tiên các gam màu phản xạ ánh sáng mềm quanh cổ.
+            </p>
+            <div class="aw-palette-label">BẢNG MÀU NÊN MẶC HÔM NAY (WEAR / AVOID):</div>
+            <div class="aw-palette-swatches" id="skinPaletteSwatches"></div>
+          </div>
+        </div>
+
+        <!-- NEW: On-Device Saved Lookbook (from uiharu-kazari/anywear Lookbook.tsx) -->
+        <div class="control-group" id="savedLookbookSection">
+          <div class="control-group-title">
+            <span>✦ TỦ LOOKBOOK ĐÃ CHẤM ĐIỂM (SAVED LOOKS)</span>
+            <button type="button" class="aw-mini-action-link" id="saveCurrentLookBtn">+ Lưu Look Này</button>
+          </div>
+          <div class="aw-saved-lookbook-row" id="savedLookbookRow"></div>
         </div>
 
         <!-- Fit Score Banner -->
@@ -743,13 +841,13 @@
         <h4>AnyWear: Live Virtual Try-On</h4>
         <ul>
           <li><a href="#anywear-extension-hub">Thử Đồ Qua Camera Khi Di Chuyển</a></li>
-          <li><a href="#anywear-extension-hub">Dán Link Từ Pinterest &amp; Google Images</a></li>
-          <li><a href="https://anywear.live/try-on?preview=1" target="_blank" rel="noopener">AnyWear.Live Official Fitting Room ↗</a></li>
+          <li><a href="https://shopanywear.com/store/" target="_blank" rel="noopener">ShopAnywear.com/store — Kho Thử Đồ Trực Tuyến ↗</a></li>
+          <li><a href="https://github.com/uiharu-kazari/anywear" target="_blank" rel="noopener">API AnyWear (Skin AI + VTO v4 + Stylist Verdict) ↗</a></li>
         </ul>
       </div>
     </div>
     <div style="border-top: 1px solid var(--border-subtle); padding-top: 24px; display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; font-family: var(--font-mono); font-size: 11px; color: var(--text-muted);">
-      <span>© 2026 ATELIER INTERACTIVE • POWERED BY ANYWEAR.LIVE VIRTUAL TRY-ON</span>
+      <span>© 2026 ATELIER INTERACTIVE • POWERED BY SHOPANYWEAR.COM/STORE &amp; UIHARU-KAZARI/ANYWEAR API</span>
       <span>REF: LALIN.VN × STRESSMAMA.VN × MINDE.VN</span>
     </div>
   </footer>

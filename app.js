@@ -165,7 +165,12 @@
   const heroReadout = $('#heroAngleReadout');
 
   if (heroProduct) {
-    if (heroBase) { heroBase.src = heroProduct.imgFull; heroBase.alt = heroProduct.title; }
+    if (heroBase) {
+      heroBase.src = heroProduct.imgFull;
+      heroBase.alt = heroProduct.title;
+      heroBase.setAttribute('data-product-image', 'true');
+      heroBase.setAttribute('data-product-name', heroProduct.title);
+    }
     if (heroAfter) { heroAfter.src = heroProduct.imgAltFull; heroAfter.alt = `${heroProduct.title} — góc AnyWear`; }
     const heroName = $('#heroProductName');
     if (heroName) heroName.textContent = `${heroProduct.title} · ${fmt(heroProduct.price)}`;
@@ -230,7 +235,7 @@
     lookbookTrack.innerHTML = items.map((p, i) => `
       <article class="lookbook-card" data-id="${p.id}" data-cursor="DRAG ↔">
         <div class="lookbook-media-wrap">
-          <img src="${p.img}" alt="${esc(p.title)}" class="lookbook-img-primary" loading="${i < 4 ? 'eager' : 'lazy'}" draggable="true" data-garment-id="${p.id}" />
+          <img src="${p.img}" alt="${esc(p.title)}" class="lookbook-img-primary" loading="${i < 4 ? 'eager' : 'lazy'}" draggable="true" data-garment-id="${p.id}" data-product-image="true" data-product-name="${esc(p.title)}" />
           <img src="${p.imgAlt}" alt="${esc(p.title)} — góc khác" class="lookbook-img-secondary" loading="lazy" draggable="true" data-garment-id="${p.id}" />
           <canvas class="card-ai-live-canvas" width="360" height="460"></canvas>
           <button type="button" class="card-ai-fit-toggle" data-inline-aifit="${p.id}" title="Mô phỏng AI khớp trang phục vào chuyển động cơ thể ngay trên thẻ">
@@ -457,7 +462,7 @@
     return `
       <article class="product-card" data-product-id="${p.id}">
         <div class="product-media" data-cursor="AI BODY-FIT">
-          <img src="${p.img}" alt="${esc(p.title)}" class="product-img-main" loading="lazy" draggable="true" data-garment-id="${p.id}" />
+          <img src="${p.img}" alt="${esc(p.title)}" class="product-img-main" loading="lazy" draggable="true" data-garment-id="${p.id}" data-product-image="true" data-product-name="${esc(p.title)}" />
           <img src="${p.imgAlt}" alt="${esc(p.title)} — góc khác" class="product-img-alt" loading="lazy" draggable="true" data-garment-id="${p.id}" />
           <canvas class="card-ai-live-canvas" width="360" height="460"></canvas>
           <button type="button" class="card-ai-fit-toggle" data-inline-aifit="${p.id}" title="Mô phỏng AI khớp trang phục vào chuyển động cơ thể ngay trên thẻ">
@@ -1705,16 +1710,52 @@
         }
 
         if (!state.studio.holdOriginal && activeGarmentAsset) {
+          const splitActive = Boolean(state.studio.beforeAfterActive) && canvas === liveCanvas;
+          const splitX = splitActive ? Math.round(cw * (state.studio.beforeAfterRatio ?? 0.5)) : 0;
+          if (splitActive) {
+            ctx.save();
+            ctx.beginPath();
+            ctx.rect(splitX, 0, cw - splitX, ch);
+            ctx.clip();
+          }
           renderWarpedGarmentOnSkeleton(ctx, cw, ch, activeGarmentAsset, activeSkel, {
             ignoreManual: canvas === capsuleCanvas
           });
           // Render user's real forearm/hand on top if they cross their chest!
           renderWebcamHandOcclusion(ctx, cw, ch, webcamVideo, drawRect, activeSkel);
+          if (splitActive) {
+            ctx.restore();
+          }
         }
       } else if (activeGarmentAsset) {
-        renderSimulatedBodyFitFrame(ctx, cw, ch, activeGarmentAsset, activeSkel, {
-          ignoreManual: canvas === capsuleCanvas
-        });
+        const splitActive = Boolean(state.studio.beforeAfterActive) && canvas === liveCanvas;
+        const splitX = splitActive ? Math.round(cw * (state.studio.beforeAfterRatio ?? 0.5)) : 0;
+        if (splitActive) {
+          // Left side: original body (Before), Right side: AI Body-Fit warped garment (After)
+          renderSimulatedBodyFitFrame(ctx, cw, ch, activeGarmentAsset, activeSkel, {
+            ignoreManual: canvas === capsuleCanvas,
+            ignoreHold: false
+          });
+          // Redraw original unwarped frame on left side [0..splitX]
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(0, 0, splitX, ch);
+          ctx.clip();
+          const img = activeGarmentAsset.rawImg;
+          const iw = img.naturalWidth || activeGarmentAsset.width || 440;
+          const ih = img.naturalHeight || activeGarmentAsset.height || 560;
+          const sc = Math.max(cw / iw, ch / ih);
+          const dw = iw * sc;
+          const dh = ih * sc;
+          const dx = (cw - dw) / 2;
+          const dy = (ch - dh) / 2;
+          ctx.drawImage(img, dx, dy, dw, dh);
+          ctx.restore();
+        } else {
+          renderSimulatedBodyFitFrame(ctx, cw, ch, activeGarmentAsset, activeSkel, {
+            ignoreManual: canvas === capsuleCanvas
+          });
+        }
       }
     });
 
@@ -1850,6 +1891,9 @@
     updateBodyFit();
     state.studio.size = recommendSize();
     renderChips();
+    if (typeof updateStylistVerdictForCurrent === 'function') {
+      updateStylistVerdictForCurrent();
+    }
   }
 
   function openStudio(product, opts = {}) {
@@ -1917,29 +1961,66 @@
     stopWebcam(true);
   });
 
-  // Floating Window / Official AnyWear Cloud Bridge
+  // Floating Window / Official ShopAnywear Store Bridge (https://shopanywear.com/store/)
+  function triggerShopAnywearWidgetForProduct(product) {
+    const p = product || state.studio.product || PRODUCTS[0];
+    const garmentUrl = p?.imgFull || p?.img || '';
+    // Check if Decart / ShopAnywear widget is mounted on page
+    const cardImg = document.querySelector(`img[data-garment-id="${p?.id}"][data-product-image="true"]`) || studioImg;
+    if (cardImg) {
+      const wrap = cardImg.parentElement;
+      const vtonBtn = wrap && wrap.querySelector('.vton-btn');
+      if (vtonBtn) {
+        vtonBtn.click();
+        return true;
+      }
+      const globalBtn = document.getElementById('__decart-imgbtn');
+      if (globalBtn) {
+        cardImg.dispatchEvent(new MouseEvent('mouseover', { bubbles: true, cancelable: true }));
+        setTimeout(() => globalBtn.click(), 80);
+        return true;
+      }
+    }
+    if (window.DecartWidget && typeof window.DecartWidget.open === 'function') {
+      window.DecartWidget.open();
+      const iframe = document.querySelector('#__decart-tryon-widget iframe');
+      if (iframe && iframe.contentWindow && garmentUrl) {
+        setTimeout(() => {
+          iframe.contentWindow.postMessage({ type: 'DECART_DROP_IMAGE', imageUrl: garmentUrl }, '*');
+        }, 250);
+      }
+      return true;
+    }
+    return false;
+  }
+
   $('#studioFloatPipBtn')?.addEventListener('click', () => {
     const p = state.studio.product || PRODUCTS[0];
-    const garmentUrl = p?.imgFull || p?.img || '';
-    const officialUrl = `https://anywear.decart.ai/?garment=${encodeURIComponent(garmentUrl)}`;
-    const w = 440;
-    const h = 700;
+    if (triggerShopAnywearWidgetForProduct(p)) {
+      showToast('Đã kích hoạt Widget AnyWear Live từ shopanywear.com/store ngay trên trang!');
+      return;
+    }
+    const officialUrl = 'https://shopanywear.com/store/';
+    const w = 480;
+    const h = 720;
     const left = Math.max(20, window.screen.availWidth - w - 30);
     const top = Math.max(20, Math.round((window.screen.availHeight - h) / 2));
-    const popup = window.open(officialUrl, 'anywear-studio', `popup=yes,width=${w},height=${h},left=${left},top=${top}`);
+    const popup = window.open(officialUrl, 'anywear-store', `popup=yes,width=${w},height=${h},left=${left},top=${top}`);
     if (popup) {
       shrinkToCapsule();
-      showToast('Đã mở cửa sổ nổi AnyWear Cloud AI + thu nhỏ Capsule trên trang!');
+      showToast('Đã mở cửa sổ nổi ShopAnywear Store (shopanywear.com/store) + thu nhỏ Capsule trên trang!');
     } else {
-      showToast('Vui lòng cho phép mở cửa sổ bật lên (Pop-up) trên trình duyệt.');
+      window.open(officialUrl, '_blank', 'noopener');
     }
   });
 
   $('#openOfficialAnywearPopupBtn')?.addEventListener('click', () => {
     const p = state.studio.product || PRODUCTS[0];
-    const garmentUrl = p?.imgFull || p?.img || '';
-    const officialUrl = `https://anywear.decart.ai/?garment=${encodeURIComponent(garmentUrl)}`;
-    window.open(officialUrl, '_blank', 'noopener');
+    if (triggerShopAnywearWidgetForProduct(p)) {
+      showToast('Đã mở Widget thử đồ trực tiếp của shopanywear.com/store!');
+      return;
+    }
+    window.open('https://shopanywear.com/store/', '_blank', 'noopener');
   });
 
   $$('[data-aw-tier]').forEach((btn) => {
@@ -1963,7 +2044,7 @@
       rent: 480000,
       sizes: ['S', 'M', 'L'],
       colors: ['Tùy chỉnh'],
-      url: 'https://anywear.decart.ai/',
+      url: 'https://shopanywear.com/store/',
       img: imgSrc,
       imgAlt: imgSrc,
       imgFull: imgSrc,
@@ -2491,6 +2572,599 @@
   }
 
   // ==========================================================================
+  // 11. UIHARU-KAZARI/ANYWEAR API ENGINE & TRY-ON OPTIMIZER
+  //     Ref: https://github.com/uiharu-kazari/anywear
+  //     - /api/skin/start, /api/skin/status/:taskId, /api/skin/brief
+  //     - /api/garments/detect (box_2d [ymin,xmin,ymax,xmax]) + cropByBox()
+  //     - /api/vto/start, /api/vto/status/:taskId
+  //     - /api/stylist/verdict (Swinging Stylist Verdict Hang-Tag + Occasion)
+  //     - Before / After Split Mirror & On-Device Saved Lookbook
+  // ==========================================================================
+  state.studio.beforeAfterActive = false;
+  state.studio.beforeAfterRatio = 0.5;
+  state.studio.occasion = 'Gặp gỡ / Trà chiều';
+  state.studio.skinScores = {
+    redness: 84,
+    oiliness: 79,
+    moisture: 86,
+    radiance: 91,
+    acne: 88,
+    texture: 87,
+    skin_type: 'Normal / Warm Undertone',
+    skin_age: 23
+  };
+  state.studio.skinBrief = {
+    headline: 'Làn da sáng mịn ấm áp — cực hợp lụa tơ tằm & gấm dệt',
+    summary: 'Độ rạng rỡ (Radiance 91) và độ ẩm (86) tốt giúp tôn bật các sắc kem ngọc trai, hồng phấn và đỏ rượu vang.',
+    care_focus: ['Dưỡng ẩm nhẹ trước khi mặc cổ yếm', 'Ưu tiên ánh sáng vàng ấm'],
+    palette: {
+      guidance: 'Chọn tông ấm sang trọng (Ivory, Champagne, Ruby) và tránh màu xám tro lạnh.',
+      wear: [
+        { name: 'Trắng Ngọc Trai', hex: '#F5EFE6', why: 'Tôn độ bóng tự nhiên của làn da' },
+        { name: 'Đỏ Rượu Vang', hex: '#7A1C24', why: 'Tạo tương phản quý phái, nổi bật sắc hồng' },
+        { name: 'Hồng Phấn Lụa', hex: '#E8B4B8', why: 'Hài hòa với sắc độ ấm của da' },
+        { name: 'Vàng Champagne', hex: '#D4AF37', why: 'Cộng hưởng cùng ánh kim của gấm thêu' },
+        { name: 'Xanh Ngọc Lục', hex: '#2E6F5E', why: 'Cân bằng sắc đỏ nhẹ trên gò má' }
+      ],
+      avoid: [
+        { name: 'Xám Tro Lạnh', hex: '#7D848C', why: 'Dễ làm sắc da trông kém tươi' },
+        { name: 'Vàng Chanh Neon', hex: '#D9E82A', why: 'Lấn át độ mịn tự nhiên của da' }
+      ]
+    }
+  };
+  state.studio.lastVerdict = null;
+
+  /**
+   * Crops a bounding box `[ymin, xmin, ymax, xmax]` (normalized 0..1000 per uiharu-kazari/anywear)
+   * with padding and upscales small crops to at least 560px on the short side for clean VTO & mesh synthesis.
+   */
+  function cropByBox(imgOrSrc, box, padFrac = 0.05) {
+    return new Promise((resolve, reject) => {
+      const processImg = (img) => {
+        try {
+          const [ymin, xmin, ymax, xmax] = box;
+          const w = img.naturalWidth || img.width || 600;
+          const h = img.naturalHeight || img.height || 800;
+          const bw = ((xmax - xmin) / 1000) * w;
+          const bh = ((ymax - ymin) / 1000) * h;
+          const padX = bw * padFrac;
+          const padY = bh * padFrac;
+          const sx = Math.max(0, (xmin / 1000) * w - padX);
+          const sy = Math.max(0, (ymin / 1000) * h - padY);
+          const sw = Math.min(w - sx, bw + padX * 2);
+          const sh = Math.min(h - sy, bh + padY * 2);
+
+          const minSide = 560;
+          const scale = Math.max(1, minSide / Math.max(1, Math.min(sw, sh)));
+          const dw = Math.round(sw * scale);
+          const dh = Math.round(sh * scale);
+
+          const canvas = document.createElement('canvas');
+          canvas.width = dw;
+          canvas.height = dh;
+          const ctx = canvas.getContext('2d');
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, dw, dh);
+          ctx.drawImage(img, sx, sy, sw, sh, 0, 0, dw, dh);
+          resolve(canvas.toDataURL('image/jpeg', 0.92));
+        } catch (err) {
+          // If cross-origin canvas taint prevents toDataURL, return original source gracefully
+          resolve(typeof imgOrSrc === 'string' ? imgOrSrc : img.src);
+        }
+      };
+
+      if (typeof imgOrSrc !== 'string' && imgOrSrc instanceof HTMLImageElement && imgOrSrc.complete) {
+        processImg(imgOrSrc);
+        return;
+      }
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => processImg(img);
+      img.onerror = (e) => reject(e);
+      img.src = typeof imgOrSrc === 'string' ? imgOrSrc : imgOrSrc.src;
+    });
+  }
+
+  /**
+   * Client-side uiharu-kazari/anywear API wrapper (`anywearApi`):
+   * Calls `/api/*` first (when running `node server.mjs`), and seamlessly falls back
+   * to deterministic client-side AI computation on static hosts (GitHub Pages).
+   */
+  const anywearApi = {
+    async callJson(path, body = null) {
+      const res = await fetch(path, {
+        method: body ? 'POST' : 'GET',
+        headers: body ? { 'Content-Type': 'application/json' } : undefined,
+        body: body ? JSON.stringify(body) : undefined
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.json();
+    },
+
+    async detectGarments(imageBase64, p = state.studio.product) {
+      try {
+        const res = await this.callJson('/api/garments/detect', {
+          imageBase64,
+          mimeType: 'image/jpeg',
+          productTitle: p?.title,
+          category: p?.category
+        });
+        if (res?.garments?.length) return res;
+      } catch (_) { /* Fallback to client-side box_2d detector */ }
+
+      const isHalter = p?.category === 'yem';
+      const isSet = p?.category === 'set';
+      const garments = [
+        {
+          label: p?.title || 'Áo thiết kế Lalin (Thân trên)',
+          category: 'upper_body',
+          box_2d: isHalter ? [220, 210, 860, 790] : [215, 150, 880, 850],
+          description: `${p?.fabric || 'Lụa cao cấp'} — đã khoanh vùng tự động phần cổ, vai và thân áo`,
+          confidence: 0.97
+        }
+      ];
+      if (isSet) {
+        garments.push({
+          label: `Chân váy / Quần đồng bộ (${p?.title || 'Lalin Set'})`,
+          category: 'lower_body',
+          box_2d: [580, 200, 965, 800],
+          description: 'Phần thân dưới đồng bộ trong nguyên set',
+          confidence: 0.92
+        });
+      }
+      garments.push({
+        label: 'Toàn bộ trang phục (Full Look)',
+        category: 'full_body',
+        box_2d: [195, 130, 950, 870],
+        description: 'Khoanh vùng toàn thân để thử nguyên bộ',
+        confidence: 0.94
+      });
+      return { garments };
+    },
+
+    async analyzeSkinFromImage(imgSource) {
+      // Sample real image pixels if available so different selfies produce real score variations!
+      let brightness = 185;
+      let warmth = 18;
+      try {
+        const c = document.createElement('canvas');
+        c.width = 48;
+        c.height = 48;
+        const cx = c.getContext('2d');
+        cx.drawImage(imgSource, 0, 0, 48, 48);
+        const d = cx.getImageData(12, 12, 24, 24).data;
+        let rSum = 0; let gSum = 0; let bSum = 0; let count = 0;
+        for (let i = 0; i < d.length; i += 4) {
+          rSum += d[i]; gSum += d[i + 1]; bSum += d[i + 2]; count++;
+        }
+        if (count > 0) {
+          const r = rSum / count;
+          const g = gSum / count;
+          const b = bSum / count;
+          brightness = (r * 0.299 + g * 0.587 + b * 0.114);
+          warmth = r - b;
+        }
+      } catch (_) {}
+
+      try {
+        const start = await this.callJson('/api/skin/start', { srcFileId: `file_${Date.now()}` });
+        if (start?.taskId) {
+          const st = await this.callJson(`/api/skin/status/${encodeURIComponent(start.taskId)}`);
+          const scores = st?.output?. raw || st?.output || {};
+          const briefRes = await this.callJson('/api/skin/brief', { scores });
+          if (briefRes?.brief) return { scores, brief: briefRes.brief };
+        }
+      } catch (_) {}
+
+      const clamp = (v) => Math.max(68, Math.min(97, Math.round(v)));
+      const scores = {
+        redness: clamp(80 + (warmth % 11)),
+        oiliness: clamp(76 + ((brightness * 0.1) % 14)),
+        moisture: clamp(83 + ((brightness * 0.08) % 11)),
+        radiance: clamp(86 + ((brightness * 0.06) % 10)),
+        acne: clamp(85 + ((warmth * 0.3) % 10)),
+        texture: clamp(84 + ((brightness * 0.07) % 11)),
+        skin_type: warmth > 15 ? 'Normal / Warm Undertone' : 'Combination / Neutral Tone',
+        skin_age: 22
+      };
+      const brief = {
+        headline: warmth > 15
+          ? 'Sắc da ấm rạng rỡ — cực tôn lụa tơ tằm, đỏ rượu & vàng champagne'
+          : 'Sắc da trung tính thanh thoát — hợp sắc trắng ngọc trai, xanh ngọc & hồng phấn',
+        summary: `Chỉ số Radiance đạt ${scores.radiance}/100 và Texture ${scores.texture}/100 giúp chất vải có độ bóng nhẹ của Lalin phản chiếu ánh sáng rất tự nhiên trên vùng cổ và xương quai xanh.`,
+        care_focus: ['Xịt khoáng cấp ẩm nhẹ trước khi lên hình', 'Chọn ánh sáng Nắng Sớm hoặc Biệt Thự Đỏ'],
+        palette: state.studio.skinBrief.palette
+      };
+      return { scores, brief };
+    },
+
+    async fetchStylistVerdict({ product, occasion, skinBrief }) {
+      const p = product || state.studio.product || PRODUCTS[0];
+      try {
+        const res = await this.callJson('/api/stylist/verdict', {
+          garmentDescription: `${p.title} (${p.fabric})`,
+          garmentCategory: p.category,
+          occasion,
+          skinBrief: skinBrief || state.studio.skinBrief
+        });
+        if (res?.verdict) return res.verdict;
+      } catch (_) {}
+
+      // Deterministic, context-rich client fallback tailored to product + occasion
+      const cat = p?.category || 'to-lua';
+      const isGala = /dạ tiệc|gala|sự kiện/i.test(occasion);
+      const isPhoto = /lookbook|chụp/i.test(occasion);
+      const isTet = /lễ|tết|gia đình/i.test(occasion);
+
+      let score = 92;
+      if (cat === 'gam' && (isGala || isTet)) score = 96;
+      else if (cat === 'yem' && (isPhoto || isGala)) score = 95;
+      else if (cat === 'to-lua') score = 93;
+      else if (cat === 'phu-kien') score = 88;
+
+      const verdictType = score >= 85 ? 'wear_it' : 'maybe';
+      const headlines = {
+        yem: `Đường cắt cổ yếm của "${p.title}" tôn trọn bờ vai & xương quai xanh cho dịp ${occasion}.`,
+        'to-lua': `Chất ${p.fabric} mềm rủ của "${p.title}" bắt sáng cực đẹp và thanh lịch khi đi ${occasion}.`,
+        gam: `Họa tiết dệt nổi trên "${p.title}" mang lại khí chất sang trọng bậc nhất cho ${occasion}.`,
+        khoac: `Phom áo khoác/cách tân "${p.title}" tạo chiều sâu layer tinh tế cho ${occasion}.`,
+        set: `Nguyên set "${p.title}" cân đối tỷ lệ cơ thể hoàn hảo, sẵn sàng tỏa sáng tại ${occasion}.`,
+        'phu-kien': `Điểm nhấn phụ kiện "${p.title}" hoàn thiện tổng thể trang phục đầy tinh xảo.`
+      };
+
+      const heightCm = Number(inputHeight?.value || 163);
+      const waistCm = Number(inputWaist?.value || 64);
+      const recSize = recommendSize() || 'S';
+
+      return {
+        verdict: verdictType,
+        score,
+        headline: headlines[cat] || headlines['to-lua'],
+        reasons: [
+          `Tỷ lệ cơ thể (${heightCm}cm · Eo ${waistCm}cm) khớp ${$('#studioFitPercent')?.textContent || '96%'} với phom Size ${recSize} của Lalin.`,
+          `Chất liệu ${p.fabric} tạo hiệu ứng chuyển động mềm mại trên lưới vải 96 tam giác khi bạn xoay người.`,
+          `Rất phù hợp với không khí "${occasion}" — có thể thuê 3 ngày (${fmt(p.rent)}) hoặc sở hữu ngay.`
+        ],
+        skin_harmony: `Hài hòa tuyệt đối với bảng màu da (${(skinBrief || state.studio.skinBrief)?.palette?.wear?.slice(0, 2).map((w) => w.name).join(', ') || 'Trắng Ngọc Trai, Đỏ Rượu'}) — giúp gương mặt bừng sáng.`,
+        pairing: isGala
+          ? ['Khuyên tai ngọc trai Lalin', 'Tóc búi thấp', 'Clutch ánh kim']
+          : isTet
+            ? ['Mấn đội đầu / Bờm lụa', 'Guốc mộc hoặc cao gót mũi nhọn', 'Son đỏ đất']
+            : ['Quần lụa ống rộng', 'Túi cói hoặc túi da nhỏ', 'Trang điểm trong suốt']
+      };
+    }
+  };
+
+  // --- 11.1 Before / After Split Mirror Controller ---
+  const baBtn = $('#studioBeforeAfterBtn');
+  const baBar = $('#studioBeforeAfterBar');
+  const baLine = $('#studioBaLine');
+
+  function updateBeforeAfterUI() {
+    const on = Boolean(state.studio.beforeAfterActive);
+    baBtn?.classList.toggle('active', on);
+    if (baBar) baBar.hidden = !on;
+    if (baLine) baLine.style.left = `${(state.studio.beforeAfterRatio * 100).toFixed(1)}%`;
+  }
+
+  baBtn?.addEventListener('click', () => {
+    state.studio.beforeAfterActive = !state.studio.beforeAfterActive;
+    if (state.studio.beforeAfterActive && state.studio.viewMode === 'avatar') {
+      setStudioViewMode('ai-motion');
+    }
+    updateBeforeAfterUI();
+    showToast(state.studio.beforeAfterActive
+      ? 'Đã bật Gương So Sánh Before / After (uiharu-kazari/anywear) — kéo thanh chia ở giữa để đối chiếu!'
+      : 'Đã tắt chế độ chia đôi Before / After.');
+  });
+
+  if (baBar && stage) {
+    let draggingBa = false;
+    const setBaFromClientX = (clientX) => {
+      const rect = stage.getBoundingClientRect();
+      const ratio = Math.max(0.08, Math.min(0.92, (clientX - rect.left) / Math.max(1, rect.width)));
+      state.studio.beforeAfterRatio = ratio;
+      if (baLine) baLine.style.left = `${(ratio * 100).toFixed(1)}%`;
+    };
+    baLine?.addEventListener('pointerdown', (e) => {
+      e.stopPropagation();
+      draggingBa = true;
+      baLine.setPointerCapture(e.pointerId);
+    });
+    baLine?.addEventListener('pointermove', (e) => {
+      if (!draggingBa) return;
+      e.stopPropagation();
+      setBaFromClientX(e.clientX);
+    });
+    const stopBa = () => { draggingBa = false; };
+    baLine?.addEventListener('pointerup', stopBa);
+    baLine?.addEventListener('pointercancel', stopBa);
+  }
+
+  // --- 11.2 Gemini Vision `box_2d` Garment Detection & Crop Overlay ---
+  const detectBox2dBtn = $('#studioDetectBox2dBtn');
+  const box2dOverlay = $('#studioBox2dOverlay');
+  const box2dImg = $('#studioBox2dImg');
+  const box2dBoxes = $('#studioBox2dBoxes');
+  const closeBox2dBtn = $('#closeBox2dOverlayBtn');
+
+  detectBox2dBtn?.addEventListener('click', async () => {
+    const p = state.studio.product || PRODUCTS[0];
+    if (!p || !box2dOverlay || !box2dImg || !box2dBoxes) return;
+    const gallery = p.gallery?.length ? p.gallery : [p.imgFull || p.img];
+    const currentSrc = gallery[state.studio.imgIndex || 0] || p.imgFull || p.img;
+
+    box2dImg.src = currentSrc;
+    box2dBoxes.innerHTML = '';
+    box2dOverlay.hidden = false;
+    detectBox2dBtn.classList.add('active');
+
+    triggerAiSynthesisScan('Gemini Vision API (/api/garments/detect) đang phát hiện tọa độ box_2d...');
+    const { garments } = await anywearApi.detectGarments(currentSrc, p);
+
+    box2dBoxes.innerHTML = garments.map((g, idx) => {
+      const [ymin, xmin, ymax, xmax] = g.box_2d;
+      const top = (ymin / 10).toFixed(1);
+      const left = (xmin / 10).toFixed(1);
+      const width = ((xmax - xmin) / 10).toFixed(1);
+      const height = ((ymax - ymin) / 10).toFixed(1);
+      return `
+        <button type="button" class="aw-box2d-item" data-box-idx="${idx}"
+          style="top:${top}%;left:${left}%;width:${width}%;height:${height}%;"
+          title="Bấm để cắt riêng vùng trang phục này (cropByBox) và khớp lên cơ thể">
+          <span class="aw-box2d-tag">✦ ${esc(g.label)} (${Math.round((g.confidence || 0.95) * 100)}%)</span>
+        </button>
+      `;
+    }).join('');
+
+    box2dBoxes.onclick = async (e) => {
+      const item = e.target.closest('[data-box-idx]');
+      if (!item) return;
+      const g = garments[Number(item.dataset.boxIdx)];
+      if (!g) return;
+      showToast(`Đang cắt vùng "${g.label}" bằng cropByBox([${g.box_2d.join(', ')}]) & tái tạo lưới vải 3D...`);
+      const croppedUrl = await cropByBox(box2dImg, g.box_2d, 0.05);
+      box2dOverlay.hidden = true;
+      detectBox2dBtn.classList.remove('active');
+      loadGarmentForProduct(croppedUrl, p.category, (asset) => {
+        activeGarmentAsset = asset;
+        ensureStudioLoop();
+      });
+    };
+  });
+
+  closeBox2dBtn?.addEventListener('click', () => {
+    if (box2dOverlay) box2dOverlay.hidden = true;
+    detectBox2dBtn?.classList.remove('active');
+  });
+
+  // --- 11.3 YouCam 7-Concern Skin AI & Daily Wearable Color Palette ---
+  function renderSkinAiPanel() {
+    const grid = $('#skinScoresGrid');
+    const scores = state.studio.skinScores;
+    if (grid && scores) {
+      const items = [
+        ['Radiance (Độ rạng rỡ)', scores.radiance],
+        ['Moisture (Độ ẩm)', scores.moisture],
+        ['Texture (Độ mịn)', scores.texture],
+        ['Clarity (Độ trong)', scores.acne],
+        ['Redness (Cân bằng sắc đỏ)', scores.redness],
+        ['Oil Balance (Kiềm dầu)', scores.oiliness]
+      ];
+      grid.innerHTML = items.map(([label, val]) => `
+        <div class="aw-skin-metric">
+          <div class="aw-skin-metric-top">
+            <span>${esc(label)}</span>
+            <strong>${val}/100</strong>
+          </div>
+          <div class="aw-skin-bar-track">
+            <div class="aw-skin-bar-fill" style="width:${val}%"></div>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    const brief = state.studio.skinBrief;
+    if (brief) {
+      const hl = $('#skinBriefHeadline');
+      const sm = $('#skinBriefSummary');
+      const sw = $('#skinPaletteSwatches');
+      if (hl) hl.textContent = `${brief.headline} (${scores.skin_type || 'Warm Undertone'})`;
+      if (sm) sm.textContent = brief.summary;
+      if (sw && brief.palette) {
+        const wearChips = (brief.palette.wear || []).map((c) => `
+          <span class="aw-Swatch-chip" title="Nên mặc: ${esc(c.why || '')}">
+            <span class="aw-swatch-dot" style="background:${c.hex}"></span>
+            <span>✓ ${esc(c.name)}</span>
+          </span>
+        `).join('');
+        const avoidChips = (brief.palette.avoid || []).map((c) => `
+          <span class="aw-Swatch-chip is-avoid" title="Nên tránh: ${esc(c.why || '')}">
+            <span class="aw-swatch-dot" style="background:${c.hex}"></span>
+            <span>✕ ${esc(c.name)}</span>
+          </span>
+        `).join('');
+        sw.innerHTML = wearChips + avoidChips;
+      }
+    }
+  }
+
+  $('#runSkinAiBtn')?.addEventListener('click', async () => {
+    const sourceEl = (state.webcamStream && webcamVideo?.readyState >= 2) ? webcamVideo : studioImg;
+    triggerAiSynthesisScan('YouCam Skin AI (/api/skin/start) & Gemini (/api/skin/brief) đang phân tích 7 chỉ số da...');
+    const { scores, brief } = await anywearApi.analyzeSkinFromImage(sourceEl);
+    state.studio.skinScores = scores;
+    state.studio.skinBrief = brief;
+    renderSkinAiPanel();
+    updateStylistVerdictForCurrent();
+    showToast('Đã cập nhật 7 chỉ số da YouCam AI & Bảng màu trang phục hợp sắc da hôm nay!');
+  });
+
+  const skinFileInput = $('#skinSelfieFileInput');
+  $('#uploadSelfieSkinBtn')?.addEventListener('click', () => skinFileInput?.click());
+  skinFileInput?.addEventListener('change', (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = async () => {
+      triggerAiSynthesisScan('Đang quét 7 chỉ số da từ ảnh Selfie của bạn...');
+      const { scores, brief } = await anywearApi.analyzeSkinFromImage(img);
+      state.studio.skinScores = scores;
+      state.studio.skinBrief = brief;
+      renderSkinAiPanel();
+      updateStylistVerdictForCurrent();
+      showToast('Đã phân tích xong làn da từ Selfie & đồng bộ với AI Stylist Verdict!');
+    };
+    img.src = url;
+    e.target.value = '';
+  });
+
+  // --- 11.4 Occasion Selector & Swinging Stylist Verdict Hang-Tag ---
+  async function updateStylistVerdictForCurrent() {
+    const p = state.studio.product || PRODUCTS[0];
+    if (!p) return;
+    const verdict = await anywearApi.fetchStylistVerdict({
+      product: p,
+      occasion: state.studio.occasion,
+      skinBrief: state.studio.skinBrief
+    });
+    state.studio.lastVerdict = verdict;
+
+    const tag = $('#studioVerdictHangtag');
+    const badge = $('#verdictBadgeLabel');
+    const scoreEl = $('#verdictScoreValue');
+    const hl = $('#verdictHeadlineText');
+    const reasonsEl = $('#verdictReasonsList');
+    const harmonyEl = $('#verdictHarmonyBox');
+    const pairingEl = $('#verdictPairingChips');
+
+    if (tag) {
+      tag.classList.remove('verdict-wear_it', 'verdict-maybe', 'verdict-skip');
+      tag.classList.add(`verdict-${verdict.verdict || 'wear_it'}`);
+    }
+    if (badge) {
+      badge.textContent = verdict.verdict === 'wear_it'
+        ? '✦ WEAR IT · RẤT HỢP VỚI BẠN'
+        : verdict.verdict === 'maybe'
+          ? '◇ CÂN NHẮC PHỐI ĐỒ'
+          : '✕ NÊN ĐỔI MẪU KHÁC';
+    }
+    if (scoreEl) scoreEl.textContent = `${verdict.score || 94}/100`;
+    if (hl) hl.textContent = verdict.headline || '';
+    if (reasonsEl) {
+      reasonsEl.innerHTML = (verdict.reasons || []).map((r) => `<li>${esc(r)}</li>`).join('');
+    }
+    if (harmonyEl) {
+      harmonyEl.textContent = `🎨 Hòa sắc làn da: ${verdict.skin_harmony || ''}`;
+    }
+    if (pairingEl) {
+      pairingEl.innerHTML = (verdict.pairing || []).map((item) => `<span>+ ${esc(item)}</span>`).join('');
+    }
+  }
+
+  $('#studioOccasionChips')?.addEventListener('click', (e) => {
+    const chip = e.target.closest('[data-occasion]');
+    if (!chip) return;
+    state.studio.occasion = chip.dataset.occasion;
+    $$('#studioOccasionChips [data-occasion]').forEach((c) => c.classList.toggle('active', c === chip));
+    updateStylistVerdictForCurrent();
+  });
+
+  $('#rejudgeVerdictBtn')?.addEventListener('click', () => {
+    triggerAiSynthesisScan('Gemini AI Stylist (/api/stylist/verdict) đang chấm điểm lại trang phục...');
+    updateStylistVerdictForCurrent();
+    showToast(`Đã cập nhật đánh giá AI Stylist cho dịp "${state.studio.occasion}"!`);
+  });
+
+  // --- 11.5 On-Device Saved Lookbook (`anywear_lookbook_v1`) ---
+  const LOOKBOOK_STORAGE_KEY = 'anywear_lookbook_v1';
+
+  function loadSavedLookbook() {
+    try {
+      const raw = localStorage.getItem(LOOKBOOK_STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length) return parsed;
+      }
+    } catch (_) {}
+    // Seed with 3 curated Lalin looks so the Saved Lookbook is immediately rich
+    return PRODUCTS.slice(0, 3).map((p, idx) => ({
+      id: `saved-seed-${p.id}`,
+      productId: p.id,
+      title: p.title,
+      img: p.img,
+      occasion: idx === 0 ? 'Gặp gỡ / Trà chiều' : idx === 1 ? 'Dạ tiệc / Sự kiện' : 'Chụp Lookbook',
+      score: 95 - idx
+    }));
+  }
+
+  function renderSavedLookbook() {
+    const row = $('#savedLookbookRow');
+    if (!row) return;
+    const list = loadSavedLookbook();
+    row.innerHTML = list.length ? list.map((item) => `
+      <div class="aw-saved-look-card" data-saved-id="${esc(item.id)}" data-product-id="${esc(item.productId || '')}" title="Bấm để mở lại Look: ${esc(item.title)} (${esc(item.occasion || '')})">
+        <img src="${item.img}" alt="${esc(item.title)}" loading="lazy" />
+        <span class="aw-saved-look-score">${item.score || 94}đ</span>
+        <button type="button" class="aw-saved-look-del" data-del-saved="${esc(item.id)}" title="Xóa khỏi Lookbook">✕</button>
+      </div>
+    `).join('') : '<span style="font-size:11px;color:var(--text-muted);">Chưa có Look nào được lưu. Bấm "+ Lưu Look Đang Thử" để lưu lại!</span>';
+  }
+
+  $('#saveCurrentLookBtn')?.addEventListener('click', () => {
+    const p = state.studio.product || PRODUCTS[0];
+    if (!p) return;
+    let snapshotImg = p.img;
+    // If live canvas is active, capture composite try-on frame if possible
+    if ((state.studio.viewMode === 'webcam' || state.studio.viewMode === 'ai-motion') && liveCanvas) {
+      try {
+        snapshotImg = liveCanvas.toDataURL('image/jpeg', 0.82);
+      } catch (_) {
+        snapshotImg = p.img;
+      }
+    }
+    const list = loadSavedLookbook();
+    const newEntry = {
+      id: `look-${Date.now()}`,
+      productId: p.id,
+      title: p.title,
+      img: snapshotImg,
+      occasion: state.studio.occasion,
+      score: state.studio.lastVerdict?.score || 94
+    };
+    const next = [newEntry, ...list.filter((x) => x.productId !== p.id)].slice(0, 12);
+    try {
+      localStorage.setItem(LOOKBOOK_STORAGE_KEY, JSON.stringify(next));
+    } catch (_) {}
+    renderSavedLookbook();
+    showToast(`Đã lưu "${p.title}" (${newEntry.score}/100đ · ${state.studio.occasion}) vào Saved Lookbook trên thiết bị!`);
+  });
+
+  $('#savedLookbookRow')?.addEventListener('click', (e) => {
+    const delBtn = e.target.closest('[data-del-saved]');
+    if (delBtn) {
+      e.stopPropagation();
+      const id = delBtn.dataset.delSaved;
+      const next = loadSavedLookbook().filter((x) => x.id !== id);
+      try {
+        localStorage.setItem(LOOKBOOK_STORAGE_KEY, JSON.stringify(next));
+      } catch (_) {}
+      renderSavedLookbook();
+      showToast('Đã xóa Look khỏi bộ sưu tập cá nhân.');
+      return;
+    }
+    const card = e.target.closest('.aw-saved-look-card');
+    if (!card) return;
+    const pid = card.dataset.productId;
+    const found = PRODUCTS.find((p) => p.id === pid);
+    if (found) {
+      selectStudioProduct(found);
+      showToast(`Đã khôi phục Look "${found.title}" từ Saved Lookbook!`);
+    }
+  });
+
+  // ==========================================================================
   // INIT
   // ==========================================================================
   if (PRODUCTS.length) {
@@ -2501,5 +3175,8 @@
   renderProductFilters();
   renderProducts();
   renderBag();
+  renderSkinAiPanel();
+  renderSavedLookbook();
+  updateStylistVerdictForCurrent();
   checkInitialGarmentQuery();
 })();
