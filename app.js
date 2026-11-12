@@ -137,11 +137,11 @@
   function toFreeVtonProduct(p) {
     if (!p) return FREE_VTON_PNG_PRESETS[0];
     const catMap = {
-      'yem': 'shirt',
+      'yem': 'yem',
       'to-lua': 'shirt',
       'gam': 'jacket',
       'khoac': 'jacket',
-      'set': 'dress',
+      'set': 'set',
       'phu-kien': 'tee'
     };
     return {
@@ -163,11 +163,11 @@
     const vtonReady = Boolean(window.FreeVTONWidget);
     const totalBtns = $$('[data-tryon-id], [data-tryon-now], [data-photo-tryon-id]').length;
 
-    if (vtonReady && !window.__freeVtonCatalogSynced) {
+    if (vtonReady && (!window.__freeVtonCatalogSynced || window.FreeVTONWidget.catalog.length <= 8)) {
       window.__freeVtonCatalogSynced = true;
       window.FreeVTONWidget.setCatalog([
         ...FREE_VTON_PNG_PRESETS,
-        ...PRODUCTS.slice(0, 4).map(toFreeVtonProduct)
+        ...PRODUCTS.map(toFreeVtonProduct)
       ]);
     }
 
@@ -961,6 +961,7 @@
     garmentCutoutCanvas: null,
     garmentCutoutSrc: '',
     comparePct: 100,
+    offsetX: 0,
     offsetY: 0,
     scale: 100,
     shoulder: 100
@@ -1158,8 +1159,9 @@
     renderStaticPhotoVtonCanvas();
   });
 
-  ['vtonOffsetY', 'vtonScale', 'vtonShoulder'].forEach((id) => {
+  ['vtonOffsetX', 'vtonOffsetY', 'vtonScale', 'vtonShoulder'].forEach((id) => {
     $(`#${id}`)?.addEventListener('input', () => {
+      vtonState.offsetX = Number($('#vtonOffsetX')?.value || 0);
       vtonState.offsetY = Number($('#vtonOffsetY')?.value || 0);
       vtonState.scale = Number($('#vtonScale')?.value || 100);
       vtonState.shoulder = Number($('#vtonShoulder')?.value || 100);
@@ -1168,9 +1170,11 @@
   });
 
   $('#vtonResetFitBtn')?.addEventListener('click', () => {
+    vtonState.offsetX = 0;
     vtonState.offsetY = 0;
     vtonState.scale = 100;
     vtonState.shoulder = 100;
+    if ($('#vtonOffsetX')) $('#vtonOffsetX').value = '0';
     if ($('#vtonOffsetY')) $('#vtonOffsetY').value = '0';
     if ($('#vtonScale')) $('#vtonScale').value = '100';
     if ($('#vtonShoulder')) $('#vtonShoulder').value = '100';
@@ -1564,10 +1568,11 @@ def run_vton(req: VtonRequest):
         const userScale = (vtonState.scale || 100) / 100;
         const shoulderRatio = (vtonState.shoulder || 100) / 100;
         const offsetY = Number(vtonState.offsetY || 0);
+        const offsetX = Number(vtonState.offsetX || 0);
 
         const baseW = (isDress ? 520 : 475) * userScale * shoulderRatio * (vtonState.customPortraitImg ? 1.0 : preset.shoulderScale);
         const baseH = (isDress ? 790 : 545) * userScale;
-        const cx = W * 0.5 + (vtonState.customPortraitImg ? 0 : preset.poseShiftX);
+        const cx = W * 0.5 + (vtonState.customPortraitImg ? 0 : preset.poseShiftX) + offsetX;
         const topY = (isDress ? 318 : 322) + offsetY;
 
         aCtx.save();
