@@ -918,6 +918,8 @@ export class VirtualTryOnWidget {
       this.el.camStatusPill.dataset.state = 'live';
       this.smoothedPose = null;
       this.lastVideoTime = -1;
+      this._hasAutoCalibratedCamera = false;
+      this._camStableFrames = 0;
 
       this._runARFrameLoop();
     } catch (err) {
@@ -1001,6 +1003,14 @@ export class VirtualTryOnWidget {
         }
 
         if (this.smoothedPose && this.currentGarmentImg) {
+          if (!this._hasAutoCalibratedCamera) {
+            this._camStableFrames = (this._camStableFrames || 0) + 1;
+            if (this._camStableFrames > 12) {
+              this.autoCalibrateFit(this.smoothedPose, true);
+              this._hasAutoCalibratedCamera = true;
+            }
+          }
+
           const fit = this.computeGarmentGeometry(
             this.smoothedPose,
             this.currentProduct?.category || 'shirt',
@@ -2085,6 +2095,7 @@ export class VirtualTryOnWidget {
 
       this.staticDetectedPersonSrc = personImg.src;
       this.staticDetectedPose = detectedPose;
+      this.autoCalibrateFit(detectedPose, true);
     }
 
     return this._renderStaticPoseCanvas(personImg, garmentImg, category, detectedPose);
@@ -2153,6 +2164,106 @@ export class VirtualTryOnWidget {
     if (!this.afterDataUrl) return;
     this._triggerDownload(this.afterDataUrl, `atelier-vton-result-${Date.now()}.png`);
     this._toast('⬇ Đã tải ảnh phối đồ chất lượng cao về máy!');
+  }
+
+  /**
+   * AI Auto-Calibration: Automatically analyzes wearer's anatomical frame
+   * (shoulder span, torso height, neck-to-waist ratio, posture tilt) and calibrates
+   * optimal fit parameters (scaleX, scaleY, offsetX, offsetY, meshTightness).
+   */
+  autoCalibrateFit(targetPose = null, silent = false) {
+    const pose = targetPose || (this.activeTab === 'camera' ? this.smoothedPose : this.staticDetectedPose);
+    if (!pose || !pose.lShoulder || !pose.rShoulder) {
+      if (!silent) this._toast('⚠ Hãy đứng trước camera hoặc tải ảnh người mẫu để AI quét phom!');
+      return false;
+    }
+
+    const sL = pose.lShoulder.x <= pose.rShoulder.x ? pose.lShoulder : pose.rShoulder;
+    const sR = pose.lShoulder.x <= pose.rShoulder.x ? pose.rShoulder : pose.lShoulder;
+    const hL = pose.lHip && pose.rHip ? (pose.lHip.x <= pose.rHip.x ? pose.lHip : pose.rHip) : null;
+    const hR = pose.lHip && pose.rHip ? (pose.lHip.x <= pose.rHip.x ? pose.rHip : pose.lHip) : null;
+
+    const shW = Math.max(40, Math.hypot(sR.x - sL.x, sR.y - sL.y));
+    const sMid = { x: (sL.x + sR.x) / 2, y: (sL.y + sR.y) / 2 };
+
+    const hasHips = hL && hR && (pose.lHip.visibility ?? 1) > 0.25;
+    const hipW = hasHips ? Math.max(20, Math.hypot(hR.x - hL.x, hR.y - hL.y)) : shW * 0.78;
+    const hMid = hasHips ? { x: (hL.x + hR.x) / 2, y: (hL.y + hR.y) / 2 } : { x: sMid.x, y: sMid.y + shW * 1.45 };
+    const torsoH = Math.max(shW * 0.8, Math.hypot(hMid.x - sMid.x, hMid.y - sMid.y));
+
+    const taperRatio = shW / Math.max(20, hipW);
+    const category = this.currentProduct?.category || 'shirt';
+    const isDress = category === 'dress' || category === 'dresses' || category === 'set';
+
+    // 1. Optimal Shoulder Width (scaleX)
+    let optScaleX = 100;
+    if (taperRatio > 1.35) {
+      // Broad shoulders / athletic V-taper
+      optScaleX = 104;
+    } else if (taperRatio < 1.15) {
+      // Slender / petite shoulders
+      optScaleX = 96;
+    }
+
+    // 2. Optimal Torso Length (scaleY)
+    // Terminate naturally at beltline / iliac crest
+    let optScaleY = 100;
+    if (!isDress) {
+      const idealHemH = torsoH * 1.08;
+      const basePresetH = shW * 1.45 * 1.25;
+      optScaleY = Math.round(Math.max(78, Math.min(125, (idealHemH / basePresetH) * 100)));
+    } else {
+      optScaleY = 102;
+    }
+
+    // 3. Optimal Neck & Collar Vertical Alignment (offsetY)
+    let optOffsetY = 0;
+    if (pose.nose) {
+      const neckLength = sMid.y - pose.nose.y;
+      const standardNeck = shW * 0.42;
+      optOffsetY = Math.round(Math.max(-15, Math.min(15, (neckLength - standardNeck) * 0.22)));
+    }
+
+    // 4. Optimal Body Tightness
+    const optTightness = Math.round(Math.max(72, Math.min(94, 76 + (taperRatio - 1.15) * 32)));
+
+    // Apply calibrated values
+    this.arSettings.scaleX = optScaleX;
+    this.arSettings.scaleY = optScaleY;
+    this.arSettings.offsetX = 0;
+    this.arSettings.offsetY = optOffsetY;
+    this.arSettings.rotationDeg = 0;
+    this.arSettings.meshTightness = optTightness;
+
+    // Update DOM UI sliders
+    if (this.el.scaleXSlider) this.el.scaleXSlider.value = String(optScaleX);
+    if (this.el.scaleXVal) this.el.scaleXVal.textContent = `${optScaleX}%`;
+    if (this.el.scaleYSlider) this.el.scaleYSlider.value = String(optScaleY);
+    if (this.el.scaleYVal) this.el.scaleYVal.textContent = `${optScaleY}%`;
+    if (this.el.offsetXSlider) this.el.offsetXSlider.value = '0';
+    if (this.el.offsetXVal) this.el.offsetXVal.textContent = '0px';
+    if (this.el.offsetYSlider) this.el.offsetYSlider.value = String(optOffsetY);
+    if (this.el.offsetYVal) this.el.offsetYVal.textContent = `${optOffsetY}px`;
+    if (this.el.rotationSlider) this.el.rotationSlider.value = '0';
+    if (this.el.rotationVal) this.el.rotationVal.textContent = '0°';
+    if (this.el.meshTightnessSlider) this.el.meshTightnessSlider.value = String(optTightness);
+    if (this.el.meshTightnessVal) this.el.meshTightnessVal.textContent = `${optTightness}%`;
+
+    // Show Auto-Fit Badge
+    if (this.el.autoFitBadge) {
+      this.el.autoFitBadge.classList.remove('hidden');
+      clearTimeout(this._autoFitBadgeTimer);
+      this._autoFitBadgeTimer = setTimeout(() => {
+        this.el.autoFitBadge?.classList.add('hidden');
+      }, 4000);
+    }
+
+    if (!silent) {
+      this._toast(`✨ AI đã quét dáng người: Vai ${Math.round(shW)}px · Thân ${Math.round(torsoH)}px → Đã căn vừa in!`);
+    }
+
+    this._refreshStaticFallbackLive();
+    return true;
   }
 
   /**
@@ -2552,8 +2663,16 @@ export class VirtualTryOnWidget {
             <!-- PRECISION FIT CALIBRATION -->
             <div class="rounded-2xl bg-neutral-50 border border-neutral-200 p-3.5 space-y-3">
               <div class="flex items-center justify-between">
-                <h4 class="text-[11px] font-bold uppercase tracking-wider text-neutral-800">Căn chỉnh phom chuẩn xác</h4>
-                <button type="button" id="vton-reset-fit-btn" class="text-[11px] font-semibold text-emerald-700 hover:underline cursor-pointer">Đặt lại</button>
+                <div class="flex items-center gap-1.5">
+                  <h4 class="text-[11px] font-bold uppercase tracking-wider text-neutral-800">Căn chỉnh phom</h4>
+                  <span id="vton-autofit-badge" class="hidden text-[9px] px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold animate-pulse">✓ AI vừa vặn</span>
+                </div>
+                <div class="flex items-center gap-1.5">
+                  <button type="button" id="vton-ai-autofit-btn" class="px-2 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold shadow-sm flex items-center gap-1 transition-all cursor-pointer">
+                    <span>✨ AI Vừa Phom</span>
+                  </button>
+                  <button type="button" id="vton-reset-fit-btn" class="text-[11px] font-semibold text-neutral-500 hover:text-neutral-900 cursor-pointer">Đặt lại</button>
+                </div>
               </div>
 
               <!-- X / Y Position -->
@@ -2786,6 +2905,8 @@ export class VirtualTryOnWidget {
       organicMotionToggle: wrapper.querySelector('#vton-organic-motion-toggle'),
       creasesToggle: wrapper.querySelector('#vton-creases-toggle'),
       meshControls: wrapper.querySelector('#vton-mesh-controls'),
+      aiAutoFitBtn: wrapper.querySelector('#vton-ai-autofit-btn'),
+      autoFitBadge: wrapper.querySelector('#vton-autofit-badge'),
       resetFitBtn: wrapper.querySelector('#vton-reset-fit-btn'),
       toast: wrapper.querySelector('#vton-toast'),
     };
@@ -2934,6 +3055,10 @@ export class VirtualTryOnWidget {
     this.el.creasesToggle?.addEventListener('change', (e) => {
       this.arSettings.organicCreases = e.target.checked;
       this._refreshStaticFallbackLive();
+    });
+
+    this.el.aiAutoFitBtn?.addEventListener('click', () => {
+      this.autoCalibrateFit(null, false);
     });
 
     this.el.resetFitBtn.addEventListener('click', () => {
