@@ -149,6 +149,9 @@
       name: p.title || p.name || 'Thiết kế Lalin',
       price: typeof p.price === 'number' ? fmt(p.price) : (p.price || ''),
       image: p.imgFull || p.img || p.image || '',
+      gallery: Array.isArray(p.gallery)
+        ? p.gallery.map((u) => (u.includes('_grande.') ? u.replace('_grande.', '_1024x1024.') : u))
+        : [],
       category: catMap[p.category] || p.category || 'shirt',
       description: p.fabric || ''
     };

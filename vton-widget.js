@@ -17,6 +17,8 @@ const MEDIAPIPE_WASM_ROOT =
   'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm';
 const POSE_MODEL_URL =
   'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task';
+const CLOTHES_SEGMENTER_MODEL_URL =
+  'https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_multiclass_256x256/float32/latest/selfie_multiclass_256x256.tflite';
 const GRADIO_CLIENT_CDN =
   'https://cdn.jsdelivr.net/npm/@gradio/client/+esm';
 
@@ -28,33 +30,29 @@ const GARMENT_FIT_PRESETS = {
   tee: {
     label: 'Áo thun',
     hfCategory: 'upper_body',
-    // Tỷ lệ tổng chiều rộng ảnh PNG (gồm tay áo rộng) so với khoảng cách 2 khớp vai (11 <-> 12)
     widthMultiplier: 2.04,
-    // Vị trí đường vai bên trong ảnh PNG (0.19 giúp cổ & bờ vai áo phủ kín vùng vai trên)
-    shoulderYRatio: 0.19,
-    // Độ dài thân áo chuẩn so với chiều dài vai -> hông
+    shoulderYRatio: 0.20,
     torsoLengthMultiplier: 1.24,
   },
   jacket: {
     label: 'Áo khoác',
     hfCategory: 'upper_body',
-    widthMultiplier: 1.64,
-    shoulderYRatio: 0.165,
+    widthMultiplier: 1.66,
+    shoulderYRatio: 0.17,
     torsoLengthMultiplier: 1.25,
   },
   shirt: {
     label: 'Áo sơ mi',
     hfCategory: 'upper_body',
-    widthMultiplier: 1.94,
-    shoulderYRatio: 0.16,
+    widthMultiplier: 1.98,
+    shoulderYRatio: 0.175,
     torsoLengthMultiplier: 1.22,
   },
   dress: {
     label: 'Váy / Đầm',
     hfCategory: 'dresses',
-    // Váy không tay ôm theo bề ngang ngực/hông, dây áo đặt khớp đỉnh vai (0.06)
-    widthMultiplier: 1.38,
-    shoulderYRatio: 0.06,
+    widthMultiplier: 1.48,
+    shoulderYRatio: 0.08,
     torsoLengthMultiplier: 1.95,
   },
 };
@@ -74,10 +72,12 @@ export class VirtualTryOnWidget {
     this.currentGarmentImg = null;
     this.catalog = [];
 
-    // MediaPipe PoseLandmarker singleton + current running mode ('VIDEO' | 'IMAGE')
+    // MediaPipe PoseLandmarker instances (separate VIDEO & IMAGE instances avoid WebGL teardown) + ImageSegmenter
     this.visionModule = null;
-    this.poseLandmarker = null;
-    this.poseRunningMode = null;
+    this.poseVideoLandmarker = null;
+    this.poseImageLandmarker = null;
+    this.clothesSegmenter = null;
+    this._selectSeq = 0;
 
     // Tab 1: Real-time AR Camera state
     this.mediaStream = null;
@@ -162,24 +162,26 @@ export class VirtualTryOnWidget {
   }
 
   /**
-   * Open Modal & automatically load selected garment PNG
+   * Open Modal immediately (<1ms) while loading/segmenting garment in parallel!
    */
   async open(product, initialTab = null) {
-    if (product) {
-      await this.selectProduct(product);
-    } else if (!this.currentProduct && this.catalog.length > 0) {
-      await this.selectProduct(this.catalog[0]);
-    }
-
     this.isOpen = true;
     this.el.backdrop.classList.remove('hidden');
     this.el.backdrop.setAttribute('aria-hidden', 'false');
     document.body.style.overflow = 'hidden';
 
+    const target = product || (!this.currentProduct && this.catalog[0]) || null;
+    if (target) {
+      this._selectingPromise = this.selectProduct(target);
+    }
+
     if (initialTab) {
       this.switchTab(initialTab);
     } else if (this.activeTab === 'camera') {
       this.startCameraAR();
+    }
+    if (this._selectingPromise) {
+      await this._selectingPromise;
     }
   }
 
@@ -192,34 +194,65 @@ export class VirtualTryOnWidget {
   }
 
   async selectProduct(product) {
+    const seq = ++this._selectSeq;
     this.currentProduct = product;
     this.el.modalProductName.textContent = product.name;
-    this.el.modalProductMeta.textContent = `${
-      (GARMENT_FIT_PRESETS[product.category]?.label || 'Trang phục')
-    }${product.price ? ` · ${product.price}` : ''}`;
+    this.el.modalProductMeta.textContent = '⏳ Đang nạp & tách nền trang phục bằng AI...';
     this.el.modalGarmentThumb.src = product.image;
 
-    // Preload HTMLImageElement & auto-isolate transparent garment cutout for opaque studio JPGs
+    // Preload HTMLImageElement & run MediaPipe AI Clothes Segmentation for opaque studio/editorial photos
     const rawImg = await this._loadImage(product.image);
-    this.currentGarmentImg = rawImg
-      ? this._prepareGarmentRenderSource(rawImg, product.category || 'tee')
+    if (seq !== this._selectSeq) return;
+    let bestCutout = rawImg
+      ? await this._prepareGarmentRenderSource(rawImg, product.category || 'tee')
       : null;
+
+    // If primary editorial photo had heavy prop occlusion (e.g. bouquet covering half the chest),
+    // automatically pick the cleanest unoccluded pose-verified angle from product.gallery!
+    if (bestCutout?._occluded && Array.isArray(product.gallery) && product.gallery.length > 1) {
+      let bestRatio = bestCutout._symmetryRatio || 0;
+      for (const altUrl of product.gallery.slice(1, 4)) {
+        if (!altUrl || altUrl === product.image) continue;
+        const altImg = await this._loadImage(altUrl);
+        if (seq !== this._selectSeq) return;
+        if (!altImg) continue;
+        const altCut = await this._prepareGarmentRenderSource(altImg, product.category || 'tee');
+        if (seq !== this._selectSeq) return;
+        if (!altCut?._hasPose || altCut?._edgeClipped) continue;
+        const r = altCut._symmetryRatio ?? 0;
+        if (r > bestRatio + 0.12) {
+          bestCutout = altCut;
+          bestRatio = r;
+          this.el.modalGarmentThumb.src = altUrl;
+          if (!altCut._occluded) break;
+        }
+      }
+    }
+
+    this.currentGarmentImg = bestCutout;
+    if (seq !== this._selectSeq) return;
+
+    this.el.modalProductMeta.textContent = `${
+      GARMENT_FIT_PRESETS[product.category]?.label || 'Trang phục'
+    }${product.price ? ` · ${product.price}` : ''}`;
     this._renderProductSwitcher();
   }
 
   /**
-   * Automatically checks whether a garment image already has a transparent RGBA
-   * alpha channel (e.g., pre-cut PNG). If opaque (e.g., studio JPG from Lalin CDN),
-   * isolates the torso/garment area and removes the backdrop onto an offscreen transparent canvas.
+   * Automatically separates pure clothes from model body/face/background!
+   * 1. If the image is already a transparent RGBA PNG, returns it untouched.
+   * 2. If opaque (e.g. Lalin editorial/studio JPGs), runs MediaPipe ImageSegmenter
+   *    (`selfie_multiclass_256x256.tflite`, class 4 = CLOTHES) + PoseLandmarker
+   *    (`11,12,23,24`) to extract ONLY the garment pixels with exact shoulder anchor metadata.
    */
-  _prepareGarmentRenderSource(img, category = 'tee') {
+  async _prepareGarmentRenderSource(img, category = 'tee') {
     const key = `${img.src}:${category}`;
     if (this._garmentCache?.has(key)) return this._garmentCache.get(key);
 
     const nw = img.naturalWidth || img.width || 600;
     const nh = img.naturalHeight || img.height || 800;
 
-    // Probe alpha corners quickly
+    // 1. Fast check for pre-cut transparent RGBA PNGs
     try {
       const probe = document.createElement('canvas');
       probe.width = 24;
@@ -227,10 +260,7 @@ export class VirtualTryOnWidget {
       const pCtx = probe.getContext('2d');
       pCtx.drawImage(img, 0, 0, 24, 24);
       const pd = pCtx.getImageData(0, 0, 24, 24).data;
-      const topLeftA = pd[3];
-      const topRightA = pd[(23) * 4 + 3];
-      if (topLeftA < 30 && topRightA < 30) {
-        // Already a true transparent PNG!
+      if (pd[3] < 30 && pd[23 * 4 + 3] < 30) {
         this._garmentCache?.set(key, img);
         return img;
       }
@@ -238,89 +268,231 @@ export class VirtualTryOnWidget {
       return img;
     }
 
-    // Opaque studio JPG (e.g., Lalin catalog photo): extract torso/dress silhouette & strip studio backdrop
-    const isDress = category === 'dress' || category === 'dresses';
-    const cropTop = nh * 0.17;
-    const cropBottom = isDress ? nh * 0.93 : nh * 0.76;
-    const cropLeft = nw * 0.14;
-    const cropRight = nw * 0.86;
+    // 2. Render working copy (max 720px) for fast high-precision segmentation + pose detection
+    const maxDim = 720;
+    const scale = Math.min(1, maxDim / Math.max(nw, nh));
+    const w = Math.max(64, Math.round(nw * scale));
+    const h = Math.max(64, Math.round(nh * scale));
 
-    const outW = 620;
-    const outH = 820;
-    const c = document.createElement('canvas');
-    c.width = outW;
-    c.height = outH;
-    const ctx = c.getContext('2d');
-    ctx.drawImage(
-      img,
-      cropLeft,
-      cropTop,
-      cropRight - cropLeft,
-      cropBottom - cropTop,
-      0,
-      0,
-      outW,
-      outH
-    );
+    const srcCanvas = document.createElement('canvas');
+    srcCanvas.width = w;
+    srcCanvas.height = h;
+    const sCtx = srcCanvas.getContext('2d');
+    sCtx.drawImage(img, 0, 0, w, h);
+
+    // Run MediaPipe Clothes Segmenter (class 4) + PoseLandmarker on the garment model photo
+    let clothesMask = null;
+    let mw = 0;
+    let mh = 0;
+    let lalinPose = null;
 
     try {
-      const imgData = ctx.getImageData(0, 0, outW, outH);
-      const d = imgData.data;
+      const [segmenter, landmarker] = await Promise.all([
+        this._ensureClothesSegmenter(),
+        this._ensurePoseLandmarker('IMAGE'),
+      ]);
 
-      // Estimate backdrop RGB from outer margin samples
-      const samples = [];
-      for (let y = 8; y < 80; y += 12) {
-        for (const x of [6, 16, outW - 16, outW - 6]) {
-          const idx = (y * outW + x) * 4;
-          samples.push([d[idx], d[idx + 1], d[idx + 2]]);
-        }
+      const segRes = segmenter.segment(srcCanvas);
+      const maskObj = segRes?.confidenceMasks?.[4] || segRes?.confidenceMasks?.[1];
+      if (maskObj) {
+        mw = maskObj.width;
+        mh = maskObj.height;
+        clothesMask = new Float32Array(maskObj.getAsFloat32Array());
       }
-      const bgR = samples.reduce((s, v) => s + v[0], 0) / samples.length;
-      const bgG = samples.reduce((s, v) => s + v[1], 0) / samples.length;
-      const bgB = samples.reduce((s, v) => s + v[2], 0) / samples.length;
+      segRes?.close?.();
 
-      for (let y = 0; y < outH; y++) {
-        const ny = y / outH;
-        for (let x = 0; x < outW; x++) {
-          const nx = (x / outW) * 2 - 1;
-          const i = (y * outW + x) * 4;
-          const distBg = Math.hypot(d[i] - bgR, d[i + 1] - bgG, d[i + 2] - bgB);
-
-          const maxHalfW =
-            ny < 0.18
-              ? 0.36 + ny * 2.2
-              : ny < 0.55
-                ? 0.76 - (ny - 0.18) * 0.35
-                : isDress
-                  ? 0.64 + (ny - 0.55) * 0.34
-                  : 0.64;
-
-          const edgeDist = maxHalfW - Math.abs(nx);
-          let alpha = 1;
-          if (edgeDist < 0) alpha = 0;
-          else if (edgeDist < 0.09) alpha *= edgeDist / 0.09;
-
-          if (ny < 0.11 && Math.abs(nx) < 0.22) {
-            const neckDist = Math.hypot(nx / 0.22, (ny - 0.02) / 0.09);
-            if (neckDist < 1) alpha *= Math.max(0, (neckDist - 0.55) / 0.45);
-          }
-
-          if (ny < 0.04) alpha *= ny / 0.04;
-          if (ny > 0.94) alpha *= (1 - ny) / 0.06;
-          if (Math.abs(nx) > 0.40 && distBg < 36) {
-            alpha *= Math.max(0, (distBg - 14) / 22);
-          }
-
-          d[i + 3] = Math.round(Math.max(0, Math.min(255, alpha * 255)));
-        }
+      const poseRes = landmarker.detect(srcCanvas);
+      const lm = poseRes?.landmarks?.[0];
+      if (lm && lm.length > 24) {
+        lalinPose = {
+          lShoulder: { x: lm[11].x * w, y: lm[11].y * h },
+          rShoulder: { x: lm[12].x * w, y: lm[12].y * h },
+          lHip: { x: lm[23].x * w, y: lm[23].y * h },
+          rHip: { x: lm[24].x * w, y: lm[24].y * h },
+        };
       }
-      ctx.putImageData(imgData, 0, 0);
-    } catch {
+    } catch (err) {
+      console.warn('[VTON] AI clothes segmentation fallback notice:', err);
+    }
+
+    if (!clothesMask || !mw || !mh) {
+      this._garmentCache?.set(key, img);
       return img;
     }
 
-    this._garmentCache?.set(key, c);
-    return c;
+    const isDress = category === 'dress' || category === 'dresses';
+
+    // Compute pose-guided upper/full body clipping limits so pants don't bleed into upper shirts
+    let topCutY = 0;
+    let botCutY = h;
+    let minXLimit = 0;
+    let maxXLimit = w;
+    if (lalinPose) {
+      const shY = (lalinPose.lShoulder.y + lalinPose.rShoulder.y) / 2;
+      const hipY = (lalinPose.lHip.y + lalinPose.rHip.y) / 2;
+      const shSpan = Math.max(30, Math.hypot(lalinPose.rShoulder.x - lalinPose.lShoulder.x, lalinPose.rShoulder.y - lalinPose.lShoulder.y));
+      const torsoH = Math.max(shSpan * 1.1, Math.abs(hipY - shY));
+      topCutY = Math.max(0, shY - shSpan * 0.28);
+      botCutY = isDress ? h : Math.min(h, hipY + torsoH * 0.22);
+      const midX = (lalinPose.lShoulder.x + lalinPose.rShoulder.x) / 2;
+      const sidePad = isDress ? shSpan * 1.02 : shSpan * 0.85;
+      minXLimit = Math.max(0, midX - sidePad);
+      maxXLimit = Math.min(w, midX + sidePad);
+    }
+
+    // Bilinear upsample of smooth clothes probability mask -> apply alpha + find tight garment bbox
+    const imgData = sCtx.getImageData(0, 0, w, h);
+    const d = imgData.data;
+
+    let minX = w;
+    let minY = h;
+    let maxX = 0;
+    let maxY = 0;
+    let upperLeftCount = 0;
+    let upperRightCount = 0;
+    const symCenterX = lalinPose
+      ? (lalinPose.lShoulder.x + lalinPose.rShoulder.x) / 2
+      : w * 0.5;
+    const upperBandMaxY = lalinPose
+      ? lalinPose.lShoulder.y + Math.abs(lalinPose.lHip.y - lalinPose.lShoulder.y) * 0.68
+      : h * 0.6;
+
+    for (let y = 0; y < h; y++) {
+      const fy = ((y + 0.5) / h) * mh - 0.5;
+      const y0 = Math.max(0, Math.min(mh - 1, Math.floor(fy)));
+      const y1 = Math.max(0, Math.min(mh - 1, y0 + 1));
+      const wy = Math.max(0, Math.min(1, fy - y0));
+
+      // Vertical feather near top/bottom pose crop limits
+      let regionWeight = 1;
+      if (y < topCutY || y > botCutY) regionWeight = 0;
+      else if (!isDress && y > botCutY - 16) regionWeight = (botCutY - y) / 16;
+
+      // Track scanline row alphas to strip detached floating props/veils far from torso center
+      const rowStart = y * w;
+      for (let x = 0; x < w; x++) {
+        const idx = (rowStart + x) * 4;
+        if (regionWeight <= 0 || x < minXLimit || x > maxXLimit) {
+          d[idx + 3] = 0;
+          continue;
+        }
+
+        const fx = ((x + 0.5) / w) * mw - 0.5;
+        const x0 = Math.max(0, Math.min(mw - 1, Math.floor(fx)));
+        const x1 = Math.max(0, Math.min(mw - 1, x0 + 1));
+        const wx = Math.max(0, Math.min(1, fx - x0));
+
+        const p00 = clothesMask[y0 * mw + x0];
+        const p10 = clothesMask[y0 * mw + x1];
+        const p01 = clothesMask[y1 * mw + x0];
+        const p11 = clothesMask[y1 * mw + x1];
+        const prob = (p00 * (1 - wx) + p10 * wx) * (1 - wy) + (p01 * (1 - wx) + p11 * wx) * wy;
+
+        // Smooth probability ramp [0.34..0.68] for crisp anti-aliased fabric contour
+        const alphaNorm = Math.max(0, Math.min(1, (prob - 0.34) / 0.34)) * regionWeight;
+        d[idx + 3] = Math.round(alphaNorm * 255);
+      }
+
+      // Scanline island filter: keep only main central garment run contiguous across torso center
+      if (regionWeight > 0) {
+        const cX = Math.max(0, Math.min(w - 1, Math.round(symCenterX)));
+        // Find nearest opaque pixel near center
+        let seedX = -1;
+        for (let off = 0; off <= 45; off++) {
+          if (cX + off < w && d[(rowStart + cX + off) * 4 + 3] > 35) { seedX = cX + off; break; }
+          if (cX - off >= 0 && d[(rowStart + cX - off) * 4 + 3] > 35) { seedX = cX - off; break; }
+        }
+        if (seedX !== -1) {
+          let lx = seedX;
+          let gap = 0;
+          while (lx > 0 && gap < 14) {
+            lx--;
+            if (d[(rowStart + lx) * 4 + 3] > 28) gap = 0;
+            else gap++;
+          }
+          let rx = seedX;
+          gap = 0;
+          while (rx < w - 1 && gap < 14) {
+            rx++;
+            if (d[(rowStart + rx) * 4 + 3] > 28) gap = 0;
+            else gap++;
+          }
+          for (let x = 0; x < w; x++) {
+            const idx = (rowStart + x) * 4;
+            if (x < lx || x > rx) {
+              d[idx + 3] = 0;
+            } else if (d[idx + 3] > 45) {
+              if (x < minX) minX = x;
+              if (x > maxX) maxX = x;
+              if (y < minY) minY = y;
+              if (y > maxY) maxY = y;
+              if (y <= upperBandMaxY) {
+                if (x < symCenterX) upperLeftCount++;
+                else upperRightCount++;
+              }
+            }
+          }
+        } else {
+          for (let x = 0; x < w; x++) {
+            const idx = (rowStart + x) * 4;
+            if (d[idx + 3] > 45) {
+              if (x < minX) minX = x;
+              if (x > maxX) maxX = x;
+              if (y < minY) minY = y;
+              if (y > maxY) maxY = y;
+              if (y <= upperBandMaxY) {
+                if (x < symCenterX) upperLeftCount++;
+                else upperRightCount++;
+              }
+            }
+          }
+        }
+      }
+    }
+    sCtx.putImageData(imgData, 0, 0);
+
+    if (maxX <= minX + 16 || maxY <= minY + 16) {
+      this._garmentCache?.set(key, img);
+      return img;
+    }
+
+    // Tight crop with 10px margin onto final transparent garment canvas
+    const pad = 10;
+    const cx = Math.max(0, minX - pad);
+    const cy = Math.max(0, minY - pad);
+    const cw = Math.min(w - cx, maxX - minX + pad * 2);
+    const ch = Math.min(h - cy, maxY - minY + pad * 2);
+
+    const outCanvas = document.createElement('canvas');
+    outCanvas.width = cw;
+    outCanvas.height = ch;
+    outCanvas.getContext('2d').drawImage(srcCanvas, cx, cy, cw, ch, 0, 0, cw, ch);
+
+    // Track left/right symmetry specifically across the upper chest band so bouquet/prop occlusion triggers alt image
+    const symMax = Math.max(1, upperLeftCount, upperRightCount);
+    const symMin = Math.min(upperLeftCount, upperRightCount);
+    outCanvas._hasPose = Boolean(lalinPose);
+    outCanvas._edgeClipped = minX <= 8 || maxX >= w - 8;
+    outCanvas._symmetryRatio = symMin / symMax;
+    outCanvas._occluded = outCanvas._hasPose && outCanvas._symmetryRatio < 0.62;
+
+    // Attach exact measured shoulder geometry inside the cropped canvas so it aligns 1:1 with user pose
+    if (lalinPose) {
+      const shMidX = (lalinPose.lShoulder.x + lalinPose.rShoulder.x) / 2 - cx;
+      const shMidY = (lalinPose.lShoulder.y + lalinPose.rShoulder.y) / 2 - cy;
+      const shSpan = Math.hypot(
+        lalinPose.rShoulder.x - lalinPose.lShoulder.x,
+        lalinPose.rShoulder.y - lalinPose.lShoulder.y
+      );
+      outCanvas._vtonMeta = {
+        shoulderCenterRatioX: Math.max(0.25, Math.min(0.75, shMidX / cw)),
+        shoulderYRatio: Math.max(0.04, Math.min(0.32, shMidY / ch)),
+        shoulderSpanRatioW: Math.max(0.28, Math.min(0.88, shSpan / cw)),
+      };
+    }
+
+    this._garmentCache?.set(key, outCanvas);
+    return outCanvas;
   }
 
   switchTab(tab) {
@@ -347,18 +519,19 @@ export class VirtualTryOnWidget {
    * --------------------------------------------------------------------------
    */
   async _ensurePoseLandmarker(requiredMode = 'VIDEO') {
-    // Serialize concurrent init/mode-switch calls to prevent double WebGL WASM allocation
     const run = async () => {
       if (!this.visionModule) {
         this.visionModule = await import(MEDIAPIPE_VISION_CDN);
       }
-
       const { FilesetResolver, PoseLandmarker } = this.visionModule;
 
-      if (!this.poseLandmarker) {
-        const vision = await FilesetResolver.forVisionTasks(MEDIAPIPE_WASM_ROOT);
+      const targetProp = requiredMode === 'IMAGE' ? 'poseImageLandmarker' : 'poseVideoLandmarker';
+      if (!this[targetProp]) {
+        if (!this._visionFileset) {
+          this._visionFileset = await FilesetResolver.forVisionTasks(MEDIAPIPE_WASM_ROOT);
+        }
         try {
-          this.poseLandmarker = await PoseLandmarker.createFromOptions(vision, {
+          this[targetProp] = await PoseLandmarker.createFromOptions(this._visionFileset, {
             baseOptions: { modelAssetPath: POSE_MODEL_URL, delegate: 'GPU' },
             runningMode: requiredMode,
             numPoses: 1,
@@ -367,9 +540,8 @@ export class VirtualTryOnWidget {
             minTrackingConfidence: 0.45,
           });
         } catch (gpuErr) {
-          // Fallback to CPU WASM if WebGL/GPU delegate fails on restricted devices
           console.warn('[VTON] GPU delegate unavailable, falling back to CPU WASM:', gpuErr);
-          this.poseLandmarker = await PoseLandmarker.createFromOptions(vision, {
+          this[targetProp] = await PoseLandmarker.createFromOptions(this._visionFileset, {
             baseOptions: { modelAssetPath: POSE_MODEL_URL, delegate: 'CPU' },
             runningMode: requiredMode,
             numPoses: 1,
@@ -378,13 +550,45 @@ export class VirtualTryOnWidget {
             minTrackingConfidence: 0.45,
           });
         }
-        this.poseRunningMode = requiredMode;
-      } else if (this.poseRunningMode !== requiredMode) {
-        await this.poseLandmarker.setOptions({ runningMode: requiredMode });
-        this.poseRunningMode = requiredMode;
       }
 
-      return this.poseLandmarker;
+      // Backwards-compatible alias for inspection
+      this.poseLandmarker = this[targetProp];
+      return this[targetProp];
+    };
+
+    this._poseInitQueue = (this._poseInitQueue || Promise.resolve()).then(run, run);
+    return this._poseInitQueue;
+  }
+
+  async _ensureClothesSegmenter() {
+    const run = async () => {
+      if (!this.visionModule) {
+        this.visionModule = await import(MEDIAPIPE_VISION_CDN);
+      }
+      const { FilesetResolver, ImageSegmenter } = this.visionModule;
+      if (!this.clothesSegmenter) {
+        if (!this._visionFileset) {
+          this._visionFileset = await FilesetResolver.forVisionTasks(MEDIAPIPE_WASM_ROOT);
+        }
+        try {
+          this.clothesSegmenter = await ImageSegmenter.createFromOptions(this._visionFileset, {
+            baseOptions: { modelAssetPath: CLOTHES_SEGMENTER_MODEL_URL, delegate: 'GPU' },
+            runningMode: 'IMAGE',
+            outputCategoryMask: false,
+            outputConfidenceMasks: true,
+          });
+        } catch (gpuErr) {
+          console.warn('[VTON] Segmenter GPU fallback to CPU:', gpuErr);
+          this.clothesSegmenter = await ImageSegmenter.createFromOptions(this._visionFileset, {
+            baseOptions: { modelAssetPath: CLOTHES_SEGMENTER_MODEL_URL, delegate: 'CPU' },
+            runningMode: 'IMAGE',
+            outputCategoryMask: false,
+            outputConfidenceMasks: true,
+          });
+        }
+      }
+      return this.clothesSegmenter;
     };
 
     this._poseInitQueue = (this._poseInitQueue || Promise.resolve()).then(run, run);
@@ -431,7 +635,7 @@ export class VirtualTryOnWidget {
       canvas.width = video.videoWidth || 1280;
       canvas.height = video.videoHeight || 720;
 
-      // Load MediaPipe PoseLandmarker (VIDEO mode)
+      // Load MediaPipe PoseLandmarker (dedicated VIDEO instance)
       this.el.camStatusPill.textContent = '🧠 Đang khởi động AI PoseLandmarker (client-side)...';
       await this._ensurePoseLandmarker('VIDEO');
 
@@ -528,11 +732,11 @@ export class VirtualTryOnWidget {
         ctx.drawImage(video, 0, 0, W, H);
         ctx.restore();
 
-        // 2. Run PoseLandmarker inference when a new video frame arrives
-        if (this.poseLandmarker && video.currentTime !== this.lastVideoTime) {
+        // 2. Run PoseLandmarker inference (dedicated VIDEO instance) when a new video frame arrives
+        if (this.poseVideoLandmarker && video.currentTime !== this.lastVideoTime) {
           this.lastVideoTime = video.currentTime;
           try {
-            const result = this.poseLandmarker.detectForVideo(video, performance.now());
+            const result = this.poseVideoLandmarker.detectForVideo(video, performance.now());
             const rawLm = result?.landmarks?.[0];
             if (rawLm && rawLm.length > 24) {
               this._updateSmoothedPose(rawLm, W, H);
@@ -670,7 +874,12 @@ export class VirtualTryOnWidget {
     const userScale = (Number(settings.scalePct) || 100) / 100;
     const userOffsetY = Number(settings.offsetY) || 0;
 
-    const drawW = shoulderWidth * preset.widthMultiplier * userScale;
+    // Use measured shoulder metadata when available from segmented Lalin studio garments
+    const meta = garmentImg?._vtonMeta;
+    const widthMult = meta ? 1 / meta.shoulderSpanRatioW : preset.widthMultiplier;
+    const effectiveShoulderYRatio = meta ? meta.shoulderYRatio : preset.shoulderYRatio;
+
+    const drawW = shoulderWidth * widthMult * userScale;
     const torsoTargetH = torsoHeight * preset.torsoLengthMultiplier * userScale;
 
     let drawH = torsoTargetH;
@@ -679,8 +888,11 @@ export class VirtualTryOnWidget {
     if (gw && gh) {
       const naturalAspect = gw / gh;
       const naturalH = drawW / naturalAspect;
-      drawH = hipsVisible ? 0.55 * naturalH + 0.45 * torsoTargetH : naturalH;
+      drawH = meta ? naturalH : hipsVisible ? 0.55 * naturalH + 0.45 * torsoTargetH : naturalH;
     }
+
+    // Center garment horizontally by actual shoulder midpoint inside extracted canvas
+    const centerShiftX = meta ? (0.5 - meta.shoulderCenterRatioX) * drawW : 0;
 
     // Pivot directly at shoulder midpoint so collar locks onto neck & shoulders while tilting
     const anchorX = shoulderMid.x;
@@ -694,7 +906,8 @@ export class VirtualTryOnWidget {
       angle,
       drawW,
       drawH,
-      shoulderYRatio: preset.shoulderYRatio,
+      centerShiftX,
+      shoulderYRatio: effectiveShoulderYRatio,
       anchorX,
       anchorY,
     };
@@ -715,7 +928,13 @@ export class VirtualTryOnWidget {
     ctx.shadowOffsetY = 6;
 
     const topY = -fit.drawH * (fit.shoulderYRatio ?? 0.14);
-    ctx.drawImage(garmentImg, -fit.drawW / 2, topY, fit.drawW, fit.drawH);
+    ctx.drawImage(
+      garmentImg,
+      -fit.drawW / 2 + (fit.centerShiftX || 0),
+      topY,
+      fit.drawW,
+      fit.drawH
+    );
     ctx.restore();
   }
 
@@ -916,7 +1135,13 @@ export class VirtualTryOnWidget {
    *    seamlessly to local MediaPipe Pose Detection (IMAGE mode) + Canvas Fit.
    */
   async runStaticPhotoTryOn() {
+    if (this._selectingPromise) {
+      this.el.staticLoading.classList.remove('hidden');
+      this.el.staticLoadingText.textContent = 'Đang tách nền trang phục AI...';
+      await this._selectingPromise;
+    }
     if (!this.personImg || !this.currentGarmentImg) {
+      this.el.staticLoading.classList.add('hidden');
       this._toast('Vui lòng tải lên 1 ảnh chân dung (nửa người hoặc toàn thân).');
       return;
     }
@@ -1596,9 +1821,13 @@ export class VirtualTryOnWidget {
       btn.addEventListener('click', async () => {
         const prod = this.catalog.find((p) => p.id === btn.dataset.switchId);
         if (!prod) return;
+        if (this.activeTab === 'photo' && this.personImg) {
+          this.el.staticLoading.classList.remove('hidden');
+          this.el.staticLoadingText.textContent = `Đang tách nền AI cho "${prod.name}"...`;
+        }
         await this.selectProduct(prod);
         if (this.activeTab === 'photo' && this.personImg) {
-          this.runStaticPhotoTryOn();
+          await this.runStaticPhotoTryOn();
         }
       });
     });
