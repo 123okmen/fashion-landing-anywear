@@ -1645,7 +1645,9 @@ body {
 .lookbook-track { will-change: transform; transition: transform 0.45s var(--ease-out-expo); }
 .lookbook-viewport.is-dragging .lookbook-track { transition: transform 0.08s linear; }
 .lookbook-viewport.is-dragging img { pointer-events: none; }
-.lookbook-card img, .product-media img { -webkit-user-drag: none; user-select: none; }
+.lookbook-card img { user-select: none; }
+.product-media img { cursor: grab; }
+.product-media img:active { cursor: grabbing; }
 
 .product-img-main, .product-img-alt { object-position: center top; }
 
@@ -1871,3 +1873,864 @@ body.modal-open { overflow: hidden; }
 
 .anywear-live-pill, .chapter-tag { white-space: nowrap; }
 .anywear-card-overlay { gap: 8px; }
+
+
+/* ==========================================================================
+   v3 — Authentic AnyWear.Live Extension, Universal Input Hub,
+        60FPS Motion-Tracked Camera Canvas & Floating Capsule
+   ========================================================================== */
+:root {
+  --aw-lime: #b8ff2c;
+  --aw-lime-glow: rgba(184, 255, 44, 0.35);
+}
+
+.aw-lime-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--aw-lime);
+  display: inline-block;
+  box-shadow: 0 0 10px var(--aw-lime);
+  animation: pulseLime 1.8s infinite;
+}
+
+@keyframes pulseLime {
+  0% { box-shadow: 0 0 0 0 rgba(184, 255, 44, 0.75); }
+  70% { box-shadow: 0 0 0 8px rgba(184, 255, 44, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(184, 255, 44, 0); }
+}
+
+.aw-dot-sep {
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--aw-lime);
+  margin: 0 3px 2px;
+  vertical-align: middle;
+}
+
+.aw-wordmark {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 13px;
+  letter-spacing: -0.01em;
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+}
+
+.aw-tryon-pill-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 10px 16px;
+  border-radius: 999px;
+  background: var(--aw-lime);
+  color: #0b0c0e;
+  border: none;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 8px 24px var(--aw-lime-glow);
+  transition: transform 0.2s var(--ease-out-expo), box-shadow 0.2s ease;
+  white-space: nowrap;
+}
+
+.aw-tryon-pill-btn:hover {
+  transform: translateY(-2px) scale(1.03);
+  box-shadow: 0 12px 30px rgba(184, 255, 44, 0.55);
+}
+
+/* AnyWear Extension Universal Input Hub Section */
+.anywear-hub-section {
+  padding: 76px 40px;
+  background:
+    radial-gradient(circle at 82% 25%, rgba(184, 255, 44, 0.10), transparent 45%),
+    radial-gradient(circle at 15% 80%, rgba(217, 30, 42, 0.12), transparent 50%),
+    #0d0e12;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.anywear-hub-container {
+  max-width: 1360px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 1.1fr 0.9fr;
+  gap: 36px;
+  align-items: center;
+}
+
+.aw-brand-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: rgba(184, 255, 44, 0.1);
+  border: 1px solid rgba(184, 255, 44, 0.38);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--aw-lime);
+}
+
+.aw-hub-desc {
+  color: var(--text-muted);
+  font-size: 15px;
+  line-height: 1.65;
+  margin-bottom: 24px;
+}
+
+.aw-steps-row {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+.aw-step-card {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-subtle);
+  border-radius: 14px;
+  padding: 14px 16px;
+}
+
+.aw-step-num {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  color: #0b0c0e;
+  background: var(--aw-lime);
+  padding: 4px 8px;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+
+.aw-step-card h4 {
+  font-size: 14px;
+  font-weight: 700;
+  margin-bottom: 3px;
+}
+
+.aw-step-card p {
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+
+.anywear-hub-dropcard {
+  background: #13151b;
+  border: 1px solid rgba(184, 255, 44, 0.38);
+  border-radius: 22px;
+  padding: 22px;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.55);
+  transition: border-color 0.25s, transform 0.25s;
+}
+
+.anywear-hub-dropcard.drag-over {
+  border-color: var(--aw-lime);
+  box-shadow: 0 0 0 3px var(--aw-lime-glow), 0 24px 70px rgba(0, 0, 0, 0.7);
+  transform: scale(1.01);
+}
+
+.aw-drop-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+}
+
+.aw-ext-badge {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--aw-lime);
+  background: rgba(184, 255, 44, 0.12);
+  border: 1px solid rgba(184, 255, 44, 0.35);
+  padding: 4px 10px;
+  border-radius: 999px;
+}
+
+.aw-drop-body {
+  border: 1.5px dashed rgba(184, 255, 44, 0.42);
+  border-radius: 16px;
+  padding: 28px 20px;
+  text-align: center;
+  background: rgba(10, 12, 16, 0.65);
+  margin-bottom: 14px;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.aw-drop-body:hover {
+  border-color: var(--aw-lime);
+  background: rgba(184, 255, 44, 0.04);
+}
+
+.aw-drop-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: rgba(184, 255, 44, 0.14);
+  color: var(--aw-lime);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 12px;
+}
+
+.aw-drop-body h3 {
+  font-size: 16px;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.aw-drop-body h3 kbd,
+.aw-sheet-hint kbd {
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  padding: 2px 6px;
+  border-radius: 5px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--aw-lime);
+}
+
+.aw-drop-body p {
+  font-size: 12.5px;
+  color: var(--text-muted);
+  margin-bottom: 18px;
+}
+
+.aw-upload-btns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: center;
+}
+
+.btn-aw-lime {
+  padding: 11px 18px;
+  border-radius: 999px;
+  border: none;
+  background: var(--aw-lime);
+  color: #0b0c0e;
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.btn-aw-lime:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 22px var(--aw-lime-glow);
+}
+
+.btn-aw-ghost {
+  padding: 11px 18px;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-light);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-aw-ghost:hover {
+  border-color: var(--aw-lime);
+  color: var(--aw-lime);
+}
+
+.aw-link-form {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(10, 12, 16, 0.85);
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  padding: 6px 8px 6px 12px;
+}
+
+.aw-link-form input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: var(--text-light);
+  font-size: 12.5px;
+  outline: none;
+  min-width: 0;
+}
+
+.btn-aw-use-link {
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: none;
+  background: var(--accent-red);
+  color: #fff;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.btn-aw-use-link:hover {
+  background: var(--aw-lime);
+  color: #0b0c0e;
+}
+
+.aw-hub-foot {
+  margin-top: 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-muted);
+}
+
+.aw-hub-foot a {
+  color: var(--aw-lime);
+  text-decoration: none;
+}
+
+/* Studio Real-Time Canvas & AnyWear Top/Bottom Bars */
+.aw-live-bar-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.aw-live-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 11px;
+  border-radius: 999px;
+  background: rgba(15, 17, 22, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+.aw-live-indicator.is-live {
+  border-color: var(--aw-lime);
+  color: var(--aw-lime);
+  background: rgba(184, 255, 44, 0.14);
+}
+
+.aw-live-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-muted);
+}
+
+.aw-live-indicator.is-live .aw-live-dot {
+  background: var(--aw-lime);
+  box-shadow: 0 0 8px var(--aw-lime);
+}
+
+.aw-live-timer {
+  color: #fff;
+  margin-left: 2px;
+}
+
+.aw-top-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* Real-Time 60FPS AnyWear Canvas inside Studio */
+.anywear-live-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: none;
+  z-index: 3;
+  cursor: grab;
+}
+
+.anywear-live-canvas:active {
+  cursor: grabbing;
+}
+
+.studio-visual-stage.webcam-on .anywear-live-canvas {
+  display: block;
+}
+
+.studio-visual-stage.webcam-on .studio-webcam-video {
+  display: none !important;
+}
+
+.aw-hold-self-btn {
+  position: absolute;
+  bottom: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 11;
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: rgba(10, 12, 16, 0.82);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  color: #fff;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.aw-hold-self-btn:active,
+.aw-hold-self-btn[aria-pressed="true"] {
+  background: var(--aw-lime);
+  color: #0b0c0e;
+  border-color: var(--aw-lime);
+}
+
+/* Drop Overlay inside Studio */
+.aw-stage-drop-overlay {
+  position: absolute;
+  inset: 14px;
+  border: 2px dashed var(--aw-lime);
+  border-radius: 18px;
+  background: rgba(10, 12, 16, 0.82);
+  backdrop-filter: blur(8px);
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s;
+}
+
+.studio-viewport-panel.dragging-over .aw-stage-drop-overlay {
+  opacity: 1;
+}
+
+.aw-drop-inner {
+  text-align: center;
+  color: var(--aw-lime);
+  font-family: var(--font-display);
+  font-size: 18px;
+}
+
+/* Add Clothes Sheet inside Studio */
+.aw-add-sheet {
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  bottom: 16px;
+  z-index: 18;
+  background: rgba(16, 18, 24, 0.96);
+  backdrop-filter: blur(18px);
+  border: 1px solid rgba(184, 255, 44, 0.45);
+  border-radius: 18px;
+  padding: 18px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.85);
+}
+
+.aw-add-sheet[hidden] {
+  display: none !important;
+}
+
+.aw-sheet-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.aw-sheet-head h4 {
+  font-family: var(--font-display);
+  font-size: 15px;
+  color: var(--aw-lime);
+}
+
+.aw-sheet-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.aw-sheet-hint {
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+
+.aw-candidate-box {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.aw-candidate-title {
+  font-size: 12px;
+  color: var(--text-light);
+  margin-bottom: 8px;
+}
+
+.aw-candidate-grid {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.aw-candidate-grid button {
+  border: 2px solid transparent;
+  background: none;
+  padding: 0;
+  border-radius: 8px;
+  overflow: hidden;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.aw-candidate-grid button:hover {
+  border-color: var(--aw-lime);
+}
+
+.aw-candidate-grid img {
+  width: 60px;
+  height: 78px;
+  object-fit: cover;
+  display: block;
+}
+
+/* Recent Looks Tray in Studio Bottom Bar */
+.aw-looks-tray {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+.aw-tray-upload-tile {
+  width: 44px;
+  height: 54px;
+  border-radius: 9px;
+  border: 1px dashed rgba(184, 255, 44, 0.5);
+  background: rgba(184, 255, 44, 0.08);
+  color: var(--aw-lime);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 9px;
+}
+
+.aw-tray-upload-tile span {
+  font-size: 15px;
+  line-height: 1;
+}
+
+.aw-looks-list {
+  display: flex;
+  gap: 6px;
+}
+
+.aw-look-thumb {
+  width: 44px;
+  height: 54px;
+  border-radius: 9px;
+  overflow: hidden;
+  border: 2px solid rgba(255, 255, 255, 0.18);
+  padding: 0;
+  background: #0b0c0e;
+  cursor: pointer;
+  flex-shrink: 0;
+  position: relative;
+}
+
+.aw-look-thumb.active {
+  border-color: var(--aw-lime);
+  box-shadow: 0 0 12px var(--aw-lime-glow);
+}
+
+.aw-look-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top;
+}
+
+.aw-cam-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.btn-aw-camera-start {
+  padding: 7px 13px;
+  border-radius: 8px;
+  border: 1px solid var(--aw-lime);
+  background: var(--aw-lime);
+  color: #0b0c0e;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-aw-camera-start.live-on {
+  background: var(--accent-red);
+  border-color: var(--accent-red);
+  color: #fff;
+}
+
+/* Official AnyWear Cloud Bridge Box inside Controls Panel */
+.aw-cloud-bridge-box {
+  background: rgba(184, 255, 44, 0.06);
+  border: 1px solid rgba(184, 255, 44, 0.32);
+  border-radius: 14px;
+  padding: 12px 14px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.aw-bridge-label {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  color: var(--text-muted);
+  display: block;
+  margin-bottom: 5px;
+}
+
+.aw-tier-pills {
+  display: flex;
+  gap: 5px;
+}
+
+.aw-tier-pill {
+  padding: 4px 9px;
+  border-radius: 6px;
+  border: 1px solid var(--border-subtle);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.aw-tier-pill.active {
+  background: var(--aw-lime);
+  color: #0b0c0e;
+  border-color: var(--aw-lime);
+  font-weight: 700;
+}
+
+.btn-aw-external {
+  padding: 8px 12px;
+  border-radius: 9px;
+  border: 1px solid rgba(184, 255, 44, 0.5);
+  background: rgba(184, 255, 44, 0.12);
+  color: var(--aw-lime);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-aw-external:hover {
+  background: var(--aw-lime);
+  color: #0b0c0e;
+}
+
+/* FLOATING ANYWEAR CAPSULE (Shrink to Capsule while browsing!) */
+.anywear-floating-capsule {
+  position: fixed;
+  bottom: 24px;
+  left: 24px;
+  z-index: 9994;
+  background: rgba(14, 16, 22, 0.95);
+  backdrop-filter: blur(18px);
+  border: 1.5px solid rgba(184, 255, 44, 0.55);
+  border-radius: 20px;
+  padding: 10px 14px 10px 10px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  box-shadow: 0 22px 60px rgba(0, 0, 0, 0.78);
+  max-width: 390px;
+  transition: transform 0.25s var(--ease-out-expo), border-color 0.2s, box-shadow 0.2s;
+}
+
+.anywear-floating-capsule[hidden] {
+  display: none !important;
+}
+
+.anywear-floating-capsule.capsule-drop-active {
+  transform: scale(1.06);
+  border-color: var(--aw-lime);
+  box-shadow: 0 0 0 4px var(--aw-lime-glow), 0 24px 65px rgba(0, 0, 0, 0.9);
+}
+
+.aw-capsule-preview {
+  position: relative;
+  width: 72px;
+  height: 92px;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #08090c;
+  flex-shrink: 0;
+}
+
+.aw-capsule-preview canvas,
+.aw-capsule-preview img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top;
+}
+
+.aw-capsule-live-dot {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--aw-lime);
+  box-shadow: 0 0 8px var(--aw-lime);
+}
+
+.aw-capsule-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.aw-capsule-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.aw-capsule-timer {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--aw-lime);
+}
+
+.aw-capsule-info strong {
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.aw-capsule-info small {
+  font-size: 10.5px;
+  color: var(--text-muted);
+}
+
+.aw-capsule-btns {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.btn-aw-capsule-expand {
+  padding: 5px 10px;
+  border-radius: 7px;
+  border: none;
+  background: var(--aw-lime);
+  color: #0b0c0e;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.btn-aw-capsule-close {
+  padding: 5px 8px;
+  border-radius: 7px;
+  border: 1px solid var(--border-subtle);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-light);
+  font-size: 10px;
+  cursor: pointer;
+}
+
+@media (max-width: 1024px) {
+  .anywear-hub-container {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .anywear-hub-section {
+    padding: 48px 16px;
+  }
+  .anywear-floating-capsule {
+    left: 12px;
+    right: 12px;
+    bottom: 14px;
+    max-width: none;
+  }
+}
+
+
+/* Fix Studio Viewport Panel height so Bottom Bar & Add-Clothes Sheet are always visible */
+.anywear-studio-window {
+  height: min(860px, 92vh);
+}
+.studio-viewport-panel,
+.studio-controls-panel {
+  height: 100%;
+  max-height: min(860px, 92vh);
+}
+.studio-bottom-bar {
+  padding: 12px 16px;
+  background: linear-gradient(0deg, rgba(8, 8, 10, 0.96) 65%, transparent);
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+}
+.aw-add-sheet {
+  bottom: 128px;
+}
+@media (max-width: 1024px) {
+  .anywear-studio-window {
+    height: auto;
+    max-height: 95vh;
+  }
+  .studio-viewport-panel {
+    height: 540px;
+    max-height: none;
+  }
+  .studio-controls-panel {
+    height: auto;
+    max-height: none;
+  }
+}

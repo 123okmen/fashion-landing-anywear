@@ -1,7 +1,6 @@
 // ============================================================================
 // ATELIER V.26 — LALIN.VN (BST) × STRESSMAMA.VN (VISUAL) × MINDE.VN (PRODUCT)
-// Powered by ANYWEAR: LIVE VIRTUAL Interactive Engine
-// Product data: lalin-data.js (scraped from https://lalin.vn/collections/ao-1)
+// Integrated with AnyWear: Live Virtual Try-On (Browser + Extension + Live Cam)
 // ============================================================================
 (() => {
   'use strict';
@@ -13,6 +12,8 @@
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const isHoverDevice = window.matchMedia('(hover: hover)').matches;
 
+  const SHORT_LABELS = { yem: 'YẾM', 'to-lua': 'TƠ TẰM', gam: 'GẤM', khoac: 'KHOÁC', set: 'SET', 'phu-kien': 'CÀI ÁO' };
+
   const CATEGORY_LABELS = {
     all: 'Tất cả',
     yem: 'Áo Yếm & Cổ Yếm',
@@ -22,8 +23,6 @@
     set: 'Set Kim Sa',
     'phu-kien': 'Cài Áo'
   };
-
-  const SHORT_LABELS = { yem: 'YẾM', 'to-lua': 'TƠ TẰM', gam: 'GẤM', khoac: 'KHOÁC', set: 'SET', 'phu-kien': 'CÀI ÁO' };
 
   const CHAPTER_LABELS = {
     yem: 'CHƯƠNG I • YẾM ĐƯƠNG ĐẠI',
@@ -41,27 +40,49 @@
     productPage: 1,
     lookbookFilter: 'all',
     bag: [],
-    studio: { product: null, size: null, color: null, imgIndex: 0 },
-    webcamStream: null
+    studio: {
+      product: null,
+      size: null,
+      color: null,
+      imgIndex: 0,
+      tier: 'standard',
+      autoTrack: true,
+      aiMatte: true,
+      holdOriginal: false,
+      facingMode: 'user',
+      inCapsule: false
+    },
+    recentLooks: [],
+    webcamStream: null,
+    liveStartAt: 0,
+    timerId: null
   };
   const PAGE_SIZE = 12;
 
-  if (!PRODUCTS.length) {
-    console.error('lalin-data.js chưa được tải — không có dữ liệu sản phẩm.');
-  }
-
   // ==========================================================================
-  // 0. TOAST
+  // 0. TOAST & EXTENSION DETECTION
   // ==========================================================================
   let toastTimer = null;
   function showToast(msg) {
     const toast = $('#toastNotification');
     if (!toast) return;
-    toast.innerHTML = `<span style="color: var(--accent-jade); font-weight: 700;">✦ ANYWEAR:</span> ${esc(msg)}`;
+    toast.innerHTML = `<span style="color: var(--aw-lime); font-weight: 700;">✦ AnyWear.Live:</span> ${esc(msg)}`;
     toast.classList.add('show');
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => toast.classList.remove('show'), 3800);
+    toastTimer = setTimeout(() => toast.classList.remove('show'), 4000);
   }
+
+  // Detect AnyWear Chrome Extension (sets document.documentElement.dataset.anywear)
+  function checkAnywearExtension() {
+    const extBadge = $('#awExtStatusBadge');
+    const hasExt = Boolean(document.documentElement.dataset.anywear);
+    if (extBadge) {
+      extBadge.textContent = hasExt
+        ? '✦ AnyWear Chrome Extension: Đã Kết Nối'
+        : '✦ AnyWear Browser Engine: Sẵn Sàng (Web + Mobile)';
+    }
+  }
+  checkAnywearExtension();
 
   // ==========================================================================
   // 1. CUSTOM CURSOR & SCROLL PROGRESS
@@ -71,14 +92,13 @@
     document.addEventListener('mousemove', (e) => {
       customCursor.style.left = `${e.clientX}px`;
       customCursor.style.top = `${e.clientY}px`;
-      // Interactive controls get the native cursor so they stay usable
-      const onControl = e.target.closest('button, input, a, select');
+      const onControl = e.target.closest('button, input, a, select, form');
       const target = onControl ? null : e.target.closest('[data-cursor]');
       if (target) {
         const label = target.getAttribute('data-cursor');
         customCursor.textContent = label;
         customCursor.classList.add('active');
-        customCursor.classList.toggle('cursor-anywear', /AR/.test(label));
+        customCursor.classList.toggle('cursor-anywear', /AR|TRY/i.test(label));
       } else {
         customCursor.classList.remove('active');
       }
@@ -102,7 +122,7 @@
   }, { passive: true });
 
   // ==========================================================================
-  // 2. SCROLL REVEAL (image wipe transitions while scrolling)
+  // 2. SCROLL REVEAL
   // ==========================================================================
   const revealObserver = 'IntersectionObserver' in window
     ? new IntersectionObserver((entries) => {
@@ -111,7 +131,6 @@
         const el = entry.target;
         el.classList.add('in-view');
         revealObserver.unobserve(el);
-        // drop the translate helper afterwards so :hover transforms work again
         setTimeout(() => el.classList.remove('reveal'), 1000);
       });
     }, { threshold: 0.08, rootMargin: '0px 0px -40px 0px' })
@@ -119,18 +138,18 @@
 
   function observeReveal(el, delayIndex = 0) {
     el.classList.add('reveal', 'reveal-wipe');
-    el.style.transitionDelay = `${Math.min(delayIndex, 6) * 70}ms`;
+    el.style.transitionDelay = `${Math.min(delayIndex, 6) * 65}ms`;
     if (revealObserver) revealObserver.observe(el);
     else el.classList.add('in-view');
   }
 
-  $$('.section-header-bar, .ref-box, .red-villa-card').forEach((el) => {
+  $$('.section-header-bar, .ref-box, .red-villa-card, .anywear-hub-container').forEach((el) => {
     el.classList.add('reveal');
     if (revealObserver) revealObserver.observe(el); else el.classList.add('in-view');
   });
 
   // ==========================================================================
-  // 3. HERO SPLIT-WIPE ANYWEAR MIRROR (uses real Lalin product)
+  // 3. HERO SPLIT-WIPE ANYWEAR MIRROR
   // ==========================================================================
   const heroProduct = PRODUCTS.find((p) => p.category === 'yem' && p.gallery.length > 2) || PRODUCTS[0];
   const heroStage = $('#heroInteractiveStage');
@@ -141,7 +160,7 @@
 
   if (heroProduct) {
     if (heroBase) { heroBase.src = heroProduct.imgFull; heroBase.alt = heroProduct.title; }
-    if (heroAfter) { heroAfter.src = heroProduct.imgAltFull; heroAfter.alt = `${heroProduct.title} — góc Anywear`; }
+    if (heroAfter) { heroAfter.src = heroProduct.imgAltFull; heroAfter.alt = `${heroProduct.title} — góc AnyWear`; }
     const heroName = $('#heroProductName');
     if (heroName) heroName.textContent = `${heroProduct.title} · ${fmt(heroProduct.price)}`;
   }
@@ -152,14 +171,22 @@
       const ratio = Math.max(6, Math.min(94, ((clientX - rect.left) / rect.width) * 100));
       heroAfter.style.clipPath = `inset(0 0 0 ${ratio}%)`;
       heroSplitBar.style.left = `${ratio}%`;
-      if (heroReadout) heroReadout.textContent = `ANYWEAR SCAN ${Math.round(ratio)}% • FIT ${Math.round(95 + ratio / 25)}%`;
+      if (heroReadout) heroReadout.textContent = `ANYWEAR SCAN ${Math.round(ratio)}% • LIVE 60FPS`;
     };
     heroStage.addEventListener('mousemove', (e) => updateHeroSplit(e.clientX));
     heroStage.addEventListener('touchmove', (e) => { if (e.touches[0]) updateHeroSplit(e.touches[0].clientX); }, { passive: true });
   }
 
-  $('#heroLaunchTryOnBtn')?.addEventListener('click', (e) => { e.stopPropagation(); openStudio(heroProduct); });
-  $('#openGlobalAnywearBtn')?.addEventListener('click', () => openStudio(state.studio.product || heroProduct));
+  $('#heroLaunchTryOnBtn')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    openStudio(heroProduct, { autoStartCam: false });
+  });
+  $('#heroQuickStartAnywear')?.addEventListener('click', () => {
+    openStudio(state.studio.product || heroProduct, { autoStartCam: true });
+  });
+  $('#openGlobalAnywearBtn')?.addEventListener('click', () => {
+    openStudio(state.studio.product || heroProduct, { autoStartCam: false });
+  });
 
   // ==========================================================================
   // 4. LALIN LOOKBOOK: DRAG-TO-GLIDE + VELOCITY SKEW + PARALLAX
@@ -186,7 +213,7 @@
     const wrap = $('#lookbookFilters');
     if (!wrap) return;
     wrap.innerHTML = LOOKBOOK_FILTERS.map(([key, label]) => `
-      <button class="filter-tab ${state.lookbookFilter === key ? 'active' : ''}" data-lookbook-filter="${key}">
+      <button type="button" class="filter-tab ${state.lookbookFilter === key ? 'active' : ''}" data-lookbook-filter="${key}">
         ${esc(label)}<span class="count">${lookbookItems(key).length}</span>
       </button>`).join('');
   }
@@ -197,10 +224,12 @@
     lookbookTrack.innerHTML = items.map((p, i) => `
       <article class="lookbook-card" data-id="${p.id}" data-cursor="DRAG ↔">
         <div class="lookbook-media-wrap">
-          <img src="${p.img}" alt="${esc(p.title)}" class="lookbook-img-primary" loading="${i < 4 ? 'eager' : 'lazy'}" draggable="false" />
-          <img src="${p.imgAlt}" alt="${esc(p.title)} — góc khác" class="lookbook-img-secondary" loading="lazy" draggable="false" />
+          <img src="${p.img}" alt="${esc(p.title)}" class="lookbook-img-primary" loading="${i < 4 ? 'eager' : 'lazy'}" data-garment-id="${p.id}" />
+          <img src="${p.imgAlt}" alt="${esc(p.title)} — góc khác" class="lookbook-img-secondary" loading="lazy" data-garment-id="${p.id}" />
           <div class="anywear-card-overlay">
-            <button class="anywear-live-pill" data-open-tryon="${p.id}"><span class="pulse-dot"></span> ANYWEAR: LIVE VIRTUAL</button>
+            <button type="button" class="anywear-live-pill" data-open-tryon="${p.id}">
+              <span class="aw-lime-dot"></span> ✦ Try on
+            </button>
             <span class="chapter-tag">${CHAPTER_LABELS[p.category] || 'LALIN'}</span>
           </div>
           <div class="card-anywear-dock">
@@ -211,7 +240,7 @@
             <input type="range" min="0" max="100" value="0" class="angle-scrubber-input lookbook-scrubber" aria-label="Đổi góc ảnh ${esc(p.title)}" />
             <div class="dock-top-row">
               <span style="color: var(--accent-gold);">${esc(p.fabric)}</span>
-              <button class="dock-mini-btn tryon-trigger" data-open-tryon="${p.id}">✦ Phòng Thử AR</button>
+              <button type="button" class="dock-mini-btn tryon-trigger" data-open-tryon="${p.id}">✦ Try on Live</button>
             </div>
           </div>
         </div>
@@ -234,7 +263,6 @@
       $('.lookbook-scrubber', card)?.addEventListener('input', (e) => {
         const val = Number(e.target.value);
         card.classList.add('scrubbed');
-        // value 0 hands control back to the CSS hover-peel
         secondary.style.clipPath = val === 0 ? '' : `polygon(0 0, ${val}% 0, ${val}% 100%, 0 100%)`;
         if (label) label.textContent = val > 50 ? `Góc thứ 2 • ${val}%` : `Góc chính • ${val}%`;
       });
@@ -316,7 +344,6 @@
       if (!rafId) rafId = requestAnimationFrame(decaySkew);
     });
 
-    // Swallow the click that follows a drag so buttons/links aren't triggered accidentally
     lookbookViewport.addEventListener('click', (e) => {
       if (moved > 6) { e.stopPropagation(); e.preventDefault(); moved = 0; }
     }, true);
@@ -331,7 +358,7 @@
   }
 
   // ==========================================================================
-  // 5. STRESSMAMA VISUAL MANIFESTO (curtain wipe + scene switch)
+  // 5. STRESSMAMA VISUAL MANIFESTO
   // ==========================================================================
   const pick = (cat, fallbackIdx) => PRODUCTS.find((p) => p.category === cat && p.gallery.length > 2) || PRODUCTS[fallbackIdx] || PRODUCTS[0];
   const SCENES = PRODUCTS.length ? [
@@ -353,7 +380,7 @@
     mOverlay.src = scene.product.imgAltFull;
     [mBase, mOverlay].forEach((img) => {
       img.classList.remove('fade-swap');
-      void img.offsetWidth; // restart animation
+      void img.offsetWidth;
       img.classList.add('fade-swap');
     });
     $('#manifestoSceneCode').textContent = scene.code;
@@ -381,7 +408,7 @@
   });
 
   // ==========================================================================
-  // 6. PRODUCT SHOWROOM (Minde rent/buy model) — Anywear on every card
+  // 6. PRODUCT SHOWROOM (69 Lalin Products + Draggable AnyWear Images)
   // ==========================================================================
   const productGrid = $('#productGrid');
   const loadMoreBtn = $('#loadMoreBtn');
@@ -399,7 +426,7 @@
     wrap.innerHTML = Object.entries(CATEGORY_LABELS).map(([key, label]) => {
       const count = key === 'all' ? PRODUCTS.length : PRODUCTS.filter((p) => p.category === key).length;
       if (!count) return '';
-      return `<button class="filter-tab ${state.productFilter === key ? 'active' : ''}" data-product-filter="${key}">${esc(label)}<span class="count">${count}</span></button>`;
+      return `<button type="button" class="filter-tab ${state.productFilter === key ? 'active' : ''}" data-product-filter="${key}">${esc(label)}<span class="count">${count}</span></button>`;
     }).join('');
   }
 
@@ -409,25 +436,27 @@
     const colors = p.colors.length ? ` · ${esc(p.colors.join(' / '))}` : '';
     return `
       <article class="product-card" data-product-id="${p.id}">
-        <div class="product-media" data-cursor="ANYWEAR AR">
-          <img src="${p.img}" alt="${esc(p.title)}" class="product-img-main" loading="lazy" draggable="false" />
-          <img src="${p.imgAlt}" alt="${esc(p.title)} — góc khác" class="product-img-alt" loading="lazy" draggable="false" />
+        <div class="product-media" data-cursor="TRY ON AR">
+          <img src="${p.img}" alt="${esc(p.title)}" class="product-img-main" loading="lazy" draggable="true" data-garment-id="${p.id}" />
+          <img src="${p.imgAlt}" alt="${esc(p.title)} — góc khác" class="product-img-alt" loading="lazy" draggable="true" data-garment-id="${p.id}" />
           <div class="card-virtual-mesh-overlay"></div>
           <div class="fabric-loupe"><span class="loupe-caption">X-RAY: ${esc(p.fabric)}</span></div>
           <div class="anywear-card-overlay">
-            <button class="anywear-live-pill" data-tryon-id="${p.id}"><span class="pulse-dot"></span> ANYWEAR LIVE</button>
+            <button type="button" class="anywear-live-pill" data-tryon-id="${p.id}">
+              <span class="aw-lime-dot"></span> ✦ Try on
+            </button>
             <span class="chapter-tag">${esc(SHORT_LABELS[p.category] || '')}</span>
           </div>
           <div class="card-fit-telemetry">
             <span>✦ CHẤT LIỆU: ${esc(p.fabric)}</span>
-            <span>✦ SIZE: ${p.sizes.join(' · ') || 'Free'}</span>
+            <span>✦ KÉO ẢNH THẢ VÀO CAPSULE ĐỂ THỬ</span>
           </div>
           <div class="card-anywear-dock">
             <div class="dock-top-row">
               <span class="angle-readout-label">GÓC NHÌN: TRƯỚC (0°)</span>
               <div class="dock-mode-btns">
-                <button class="dock-mini-btn btn-toggle-loupe" title="Kính lúp soi chất vải">🔍 Soi Vải</button>
-                <button class="dock-mini-btn btn-toggle-mesh" title="Lưới đo 3D">📐 Lưới 3D</button>
+                <button type="button" class="dock-mini-btn btn-toggle-loupe" title="Kính lúp soi chất vải">🔍 Soi Vải</button>
+                <button type="button" class="dock-mini-btn btn-toggle-mesh" title="Lưới đo 3D">📐 Lưới 3D</button>
               </div>
             </div>
             <input type="range" min="0" max="100" value="0" class="angle-scrubber-input product-angle-scrubber" aria-label="Xoay góc nhìn ${esc(p.title)}" />
@@ -454,8 +483,8 @@
               </div>
             </div>
             <div class="product-actions">
-              <button class="btn-anywear-card" data-tryon-id="${p.id}"><span>✦</span> Thử Thực Tế Ảo</button>
-              <button class="btn-book-item" data-book-id="${p.id}">${rentMode ? '+ Đặt Thuê' : '+ Mua Ngay'}</button>
+              <button type="button" class="btn-anywear-card" data-tryon-id="${p.id}"><span>✦</span> Try on (AnyWear)</button>
+              <button type="button" class="btn-book-item" data-book-id="${p.id}">${rentMode ? '+ Đặt Thuê' : '+ Mua Ngay'}</button>
             </div>
           </div>
         </div>
@@ -470,6 +499,15 @@
     const loupe = $('.fabric-loupe', card);
     const angleLabel = $('.angle-readout-label', card);
     let loupeSrc = p.imgFull;
+
+    // Enable native HTML5 drag-and-drop into AnyWear Capsule / Extension
+    [imgMain, imgAlt].forEach((img) => {
+      img?.addEventListener('dragstart', (e) => {
+        e.dataTransfer.setData('text/uri-list', p.imgFull);
+        e.dataTransfer.setData('text/plain', p.imgFull);
+        e.dataTransfer.setData('application/x-anywear-id', p.id);
+      });
+    });
 
     $('.product-angle-scrubber', card)?.addEventListener('input', (e) => {
       const val = Number(e.target.value);
@@ -486,7 +524,6 @@
       e.stopPropagation();
       const on = media.classList.toggle('loupe-enabled');
       e.currentTarget.classList.toggle('active', on);
-      // lazy-load the hi-res image only when the loupe is used
       if (on) loupe.style.backgroundImage = `url('${loupeSrc}')`;
     });
 
@@ -569,80 +606,677 @@
   });
 
   // ==========================================================================
-  // 7. ANYWEAR: LIVE VIRTUAL FITTING ROOM
+  // 7. ANYWEAR: LIVE VIRTUAL ENGINE
+  //    - 4 Garment Input Methods: Product Click, File/Screenshot Upload,
+  //      Clipboard Paste (Ctrl+V), Drag & Drop (from page / Pinterest / Google),
+  //      and Product/Image URL Resolver
+  //    - Real-Time 60FPS Motion-Tracked Webcam Canvas + Smart AI Background Matte
+  //    - Floating Capsule while browsing + Document PiP + Official anywear.live link
   // ==========================================================================
   const modal = $('#anywearModal');
   const stage = $('#studioVisualStage');
   const studioImg = $('#studioMainImage');
   const webcamVideo = $('#studioWebcamVideo');
+  const liveCanvas = $('#anywearLiveCanvas');
+  const capsuleCanvas = $('#capsuleMiniCanvas');
   const arProjection = $('#arGarmentProjection');
   const arImg = $('#arGarmentImg');
   const inputHeight = $('#inputHeight');
   const inputWeight = $('#inputWeight');
   const inputWaist = $('#inputWaist');
+  const capsuleEl = $('#anywearCapsule');
   let lastFocused = null;
+
+  // Processed offscreen garment canvas (with AI background matte applied)
+  const garmentSourceImg = new Image();
+  garmentSourceImg.crossOrigin = 'anonymous';
+  let garmentProcessedCanvas = null;
+  let garmentRawLoaded = false;
+
+  // Real-time upper-body motion tracking state
+  const tracker = {
+    cx: 0.5,       // smoothed normalized torso X (0..1)
+    cy: 0.58,      // smoothed normalized torso Y (0..1)
+    scale: 1.0,    // smoothed distance scale
+    tilt: 0.0,     // smoothed shoulder tilt radians
+    manualX: 0,    // user drag offset px
+    manualY: 0,
+    manualScale: 1.0,
+    prevFrame: null,
+    workCanvas: document.createElement('canvas'),
+    rafId: null
+  };
+  tracker.workCanvas.width = 64;
+  tracker.workCanvas.height = 48;
+  const workCtx = tracker.workCanvas.getContext('2d', { willReadFrequently: true });
+
+  // Build AI-matted garment offscreen canvas (removes bright/uniform studio background around garment)
+  function buildGarmentMatte(imgEl) {
+    const w = 420;
+    const h = Math.round((imgEl.naturalHeight / Math.max(1, imgEl.naturalWidth)) * w) || 540;
+    const c = document.createElement('canvas');
+    c.width = w;
+    c.height = h;
+    const ctx = c.getContext('2d');
+    ctx.drawImage(imgEl, 0, 0, w, h);
+
+    try {
+      const imgData = ctx.getImageData(0, 0, w, h);
+      const data = imgData.data;
+
+      // Sample corners & top-left/right edges to estimate studio background color
+      const samples = [
+        [4, 4], [w - 5, 4], [4, Math.floor(h * 0.3)], [w - 5, Math.floor(h * 0.3)],
+        [4, Math.floor(h * 0.7)], [w - 5, Math.floor(h * 0.7)]
+      ];
+      let sr = 0; let sg = 0; let sb = 0;
+      samples.forEach(([sx, sy]) => {
+        const idx = (sy * w + sx) * 4;
+        sr += data[idx];
+        sg += data[idx + 1];
+        sb += data[idx + 2];
+      });
+      sr /= samples.length;
+      sg /= samples.length;
+      sb /= samples.length;
+
+      // Remove background pixels similar to border color + soft vignette around head/edges
+      const threshold = 46;
+      const feather = 26;
+      for (let y = 0; y < h; y++) {
+        const ny = y / h;
+        for (let x = 0; x < w; x++) {
+          const nx = x / w;
+          const idx = (y * w + x) * 4;
+          const r = data[idx];
+          const g = data[idx + 1];
+          const b = data[idx + 2];
+          const distBg = Math.hypot(r - sr, g - sg, b - sb);
+
+          // Also fade out the model's head area (top 19%) so the user's real head shows cleanly on camera!
+          let headMask = 1;
+          if (ny < 0.21) {
+            const headDist = Math.hypot((nx - 0.5) * 1.6, (ny - 0.10) * 2.2);
+            if (headDist < 0.26) {
+              headMask = Math.max(0, (headDist - 0.14) / 0.12);
+            }
+          }
+
+          // Edge oval feathering
+          const edgeDist = Math.hypot((nx - 0.5) * 2.05, (ny - 0.55) * 1.9);
+          const edgeMask = edgeDist > 0.92 ? Math.max(0, 1 - (edgeDist - 0.92) * 5) : 1;
+
+          let bgAlpha = 1;
+          if (distBg < threshold) {
+            bgAlpha = 0;
+          } else if (distBg < threshold + feather) {
+            bgAlpha = (distBg - threshold) / feather;
+          }
+
+          data[idx + 3] = Math.round(data[idx + 3] * bgAlpha * headMask * edgeMask);
+        }
+      }
+      ctx.putImageData(imgData, 0, 0);
+    } catch (err) {
+      // Cross-origin image without CORS headers: keep un-matted image gracefully
+    }
+    return c;
+  }
+
+  function loadGarmentImageForLive(src) {
+    garmentRawLoaded = false;
+    garmentProcessedCanvas = null;
+    garmentSourceImg.onload = () => {
+      garmentRawLoaded = true;
+      garmentProcessedCanvas = buildGarmentMatte(garmentSourceImg);
+    };
+    garmentSourceImg.onerror = () => {
+      // Fallback without crossOrigin if remote host blocks anonymous CORS
+      const fallback = new Image();
+      fallback.onload = () => {
+        garmentRawLoaded = true;
+        garmentProcessedCanvas = fallback;
+      };
+      fallback.src = src;
+    };
+    garmentSourceImg.src = src;
+  }
+
+  // Real-time motion & upper-body silhouette tracker on 64x48 downsampled frame
+  function updateMotionTracking(videoEl) {
+    if (!state.studio.autoTrack || videoEl.readyState < 2) return;
+    const w = 64;
+    const h = 48;
+    workCtx.save();
+    if (state.studio.facingMode === 'user') {
+      workCtx.translate(w, 0);
+      workCtx.scale(-1, 1);
+    }
+    workCtx.drawImage(videoEl, 0, 0, w, h);
+    workCtx.restore();
+
+    const frame = workCtx.getImageData(0, 0, w, h).data;
+    if (tracker.prevFrame) {
+      let sumX = 0;
+      let sumY = 0;
+      let sumW = 0;
+      let leftMass = 0;
+      let rightMass = 0;
+
+      for (let y = 4; y < h - 4; y++) {
+        for (let x = 6; x < w - 6; x++) {
+          const i = (y * w + x) * 4;
+          const diff = Math.abs(frame[i] - tracker.prevFrame[i])
+            + Math.abs(frame[i + 1] - tracker.prevFrame[i + 1])
+            + Math.abs(frame[i + 2] - tracker.prevFrame[i + 2]);
+          if (diff > 42) {
+            const weight = diff;
+            sumX += (x / w) * weight;
+            sumY += (y / h) * weight;
+            sumW += weight;
+            if (x < w / 2) leftMass += (y / h) * weight;
+            else rightMass += (y / h) * weight;
+          }
+        }
+      }
+
+      if (sumW > 9500) {
+        const targetX = Math.max(0.28, Math.min(0.72, sumX / sumW));
+        const targetY = Math.max(0.44, Math.min(0.70, (sumY / sumW) + 0.10));
+        tracker.cx += (targetX - tracker.cx) * 0.18;
+        tracker.cy += (targetY - tracker.cy) * 0.14;
+        const targetTilt = Math.max(-0.12, Math.min(0.12, ((rightMass - leftMass) / sumW) * 0.35));
+        tracker.tilt += (targetTilt - tracker.tilt) * 0.15;
+      } else {
+        // Gently ease tilt back when standing still
+        tracker.tilt *= 0.92;
+      }
+    }
+    tracker.prevFrame = new Uint8ClampedArray(frame);
+  }
+
+  // 60FPS Render Loop for both Studio Canvas & Floating Capsule Mini Canvas
+  function renderLiveLoop() {
+    if (!state.webcamStream) {
+      tracker.rafId = null;
+      return;
+    }
+
+    updateMotionTracking(webcamVideo);
+
+    const targets = [];
+    if (liveCanvas && modal?.classList.contains('open')) targets.push(liveCanvas);
+    if (capsuleCanvas && !capsuleEl?.hidden) targets.push(capsuleCanvas);
+
+    targets.forEach((canvas) => {
+      const rect = canvas.getBoundingClientRect();
+      if (rect.width > 0 && canvas === liveCanvas) {
+        if (canvas.width !== Math.round(rect.width) || canvas.height !== Math.round(rect.height)) {
+          canvas.width = Math.round(rect.width);
+          canvas.height = Math.round(rect.height);
+        }
+      }
+      const cw = canvas.width;
+      const ch = canvas.height;
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, cw, ch);
+
+      // 1. Draw Live Camera Video (cover fit, mirrored for front camera)
+      if (webcamVideo.readyState >= 2) {
+        const vw = webcamVideo.videoWidth || 640;
+        const vh = webcamVideo.videoHeight || 480;
+        const scale = Math.max(cw / vw, ch / vh);
+        const dw = vw * scale;
+        const dh = vh * scale;
+        const dx = (cw - dw) / 2;
+        const dy = (ch - dh) / 2;
+
+        ctx.save();
+        if (state.studio.facingMode === 'user') {
+          ctx.translate(cw, 0);
+          ctx.scale(-1, 1);
+        }
+        ctx.drawImage(webcamVideo, dx, dy, dw, dh);
+        ctx.restore();
+      }
+
+      // 2. Draw Motion-Tracked Garment (unless user holds "Hold to see yourself")
+      if (!state.studio.holdOriginal && garmentRawLoaded) {
+        const sourceDrawable = (state.studio.aiMatte && garmentProcessedCanvas)
+          ? garmentProcessedCanvas
+          : garmentSourceImg;
+        const gw = sourceDrawable.width || sourceDrawable.naturalWidth || 400;
+        const gh = sourceDrawable.height || sourceDrawable.naturalHeight || 520;
+
+        const waistFactor = 1 + (Number(inputWaist?.value || 64) - 64) * 0.006;
+        const baseWidth = cw * 0.62 * tracker.scale * tracker.manualScale * waistFactor;
+        const baseHeight = baseWidth * (gh / Math.max(1, gw));
+
+        const scaleRatio = canvas === capsuleCanvas ? (cw / 500) : 1;
+        const centerX = cw * tracker.cx + tracker.manualX * scaleRatio;
+        const centerY = ch * tracker.cy + tracker.manualY * scaleRatio;
+
+        ctx.save();
+        ctx.translate(centerX, centerY);
+        ctx.rotate(tracker.tilt);
+        ctx.globalAlpha = 0.94;
+        ctx.drawImage(sourceDrawable, -baseWidth / 2, -baseHeight / 2, baseWidth, baseHeight);
+        ctx.restore();
+      }
+    });
+
+    tracker.rafId = requestAnimationFrame(renderLiveLoop);
+  }
+
+  // Add to Recent Looks Tray (persists up to 6 looks in session)
+  function pushRecentLook(product) {
+    if (!product) return;
+    state.recentLooks = [
+      product,
+      ...state.recentLooks.filter((x) => x.id !== product.id)
+    ].slice(0, 6);
+    renderRecentLooksTray();
+  }
+
+  function renderRecentLooksTray() {
+    const list = $('#studioLooksList');
+    if (!list) return;
+    const currentId = state.studio.product?.id;
+    list.innerHTML = state.recentLooks.map((item) => `
+      <button type="button" class="aw-look-thumb ${item.id === currentId ? 'active' : ''}" data-look-id="${item.id}" title="${esc(item.title)}">
+        <img src="${item.img}" alt="${esc(item.title)}" />
+      </button>
+    `).join('');
+  }
+
+  $('#studioLooksList')?.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-look-id]');
+    if (!btn) return;
+    const found = state.recentLooks.find((x) => x.id === btn.dataset.lookId)
+      || PRODUCTS.find((x) => x.id === btn.dataset.lookId);
+    if (found) selectStudioProduct(found);
+  });
 
   function setStudioImage(idx) {
     const p = state.studio.product;
     if (!p) return;
-    const gallery = p.gallery.length ? p.gallery : [p.img];
+    const gallery = p.gallery?.length ? p.gallery : [p.img];
     state.studio.imgIndex = (idx + gallery.length) % gallery.length;
-    const src = gallery[state.studio.imgIndex].replace('_grande.', '_1024x1024.');
-    studioImg.src = src;
-    arImg.src = src;
+    const rawSrc = gallery[state.studio.imgIndex];
+    const hiResSrc = rawSrc.includes('_grande.') ? rawSrc.replace('_grande.', '_1024x1024.') : rawSrc;
+    studioImg.src = hiResSrc;
+    arImg.src = hiResSrc;
+    const capThumb = $('#capsuleGarmentThumb');
+    if (capThumb) capThumb.src = rawSrc;
+    loadGarmentImageForLive(hiResSrc);
     $$('#studioThumbs img').forEach((t, i) => t.classList.toggle('active', i === state.studio.imgIndex));
   }
 
   function renderChips() {
     const p = state.studio.product;
+    if (!p) return;
     const sizeWrap = $('#studioSizeChips');
     const colorWrap = $('#studioColorChips');
     const rec = recommendSize();
-    sizeWrap.innerHTML = p.sizes.map((s) => `
-      <button class="chip ${s === state.studio.size ? 'active' : ''} ${s === rec ? 'recommended' : ''}" data-size="${s}">${s}</button>`).join('');
-    colorWrap.innerHTML = p.colors.map((c) => `
-      <button class="chip ${c === state.studio.color ? 'active' : ''}" data-color="${esc(c)}">${esc(c)}</button>`).join('');
+    sizeWrap.innerHTML = (p.sizes || []).map((s) => `
+      <button type="button" class="chip ${s === state.studio.size ? 'active' : ''} ${s === rec ? 'recommended' : ''}" data-size="${s}">${s}</button>`).join('');
+    colorWrap.innerHTML = (p.colors || []).map((c) => `
+      <button type="button" class="chip ${c === state.studio.color ? 'active' : ''}" data-color="${esc(c)}">${esc(c)}</button>`).join('');
   }
 
-  function openStudio(product) {
-    if (!product || !modal) return;
+  function selectStudioProduct(product) {
+    if (!product) return;
     state.studio.product = product;
-    state.studio.color = product.colors[0] || '';
+    state.studio.color = product.colors?.[0] || '';
     state.studio.size = null;
 
-    $('#studioProductCategory').textContent = `LALIN.VN · ${CATEGORY_LABELS[product.category] || ''}`;
+    $('#studioProductCategory').textContent = `LALIN.VN · ${CATEGORY_LABELS[product.category] || 'CUSTOM TRY-ON'}`;
     $('#studioProductTitle').textContent = product.title;
-    $('#studioRentPrice').textContent = fmt(product.rent);
-    $('#studioBuyPrice').textContent = fmt(product.price);
-    $('#studioLalinLink').href = product.url;
-    $('#studioTelemetryText').textContent = `ANYWEAR SIMULATION · ${product.fabric.toUpperCase()}`;
-    $('#studioThumbs').innerHTML = product.gallery.map((src, i) =>
+    $('#capsuleProductTitle').textContent = product.title;
+    $('#studioRentPrice').textContent = fmt(product.rent || 450000);
+    $('#studioBuyPrice').textContent = fmt(product.price || 1690000);
+    $('#studioLalinLink').href = product.url || 'https://lalin.vn/collections/ao-1';
+    $('#studioThumbs').innerHTML = (product.gallery || [product.img]).map((src, i) =>
       `<img src="${src}" alt="Ảnh ${i + 1}" data-thumb="${i}" loading="lazy" />`).join('');
 
+    pushRecentLook(product);
     setStudioImage(0);
     updateBodyFit();
     state.studio.size = recommendSize();
     renderChips();
+  }
+
+  function openStudio(product, opts = {}) {
+    const targetProduct = product || state.studio.product || PRODUCTS[0];
+    if (!targetProduct || !modal) return;
+
+    // Hide floating capsule if expanding back to studio
+    if (capsuleEl) capsuleEl.hidden = true;
+    state.studio.inCapsule = false;
+
+    selectStudioProduct(targetProduct);
 
     lastFocused = document.activeElement;
     modal.classList.add('open');
     modal.setAttribute('aria-hidden', 'false');
     document.body.classList.add('modal-open');
-    $('#closeAnywearModalBtn')?.focus();
+
+    if (opts.autoStartCam) {
+      startWebcam();
+    } else if (state.webcamStream && !tracker.rafId) {
+      tracker.rafId = requestAnimationFrame(renderLiveLoop);
+    }
   }
 
-  function closeStudio() {
+  function closeStudio(keepCapsule = false) {
     if (!modal?.classList.contains('open')) return;
     modal.classList.remove('open');
     modal.setAttribute('aria-hidden', 'true');
-    stopWebcam();
-    if (!$('#bagDrawer')?.classList.contains('open')) document.body.classList.remove('modal-open');
+    $('#studioAddSheet')?.setAttribute('hidden', '');
+
+    if (!keepCapsule) {
+      stopWebcam();
+      if (capsuleEl) capsuleEl.hidden = true;
+      state.studio.inCapsule = false;
+    }
+    if (!$('#bagDrawer')?.classList.contains('open')) {
+      document.body.classList.remove('modal-open');
+    }
     lastFocused?.focus?.();
   }
 
-  $('#closeAnywearModalBtn')?.addEventListener('click', closeStudio);
-  modal?.addEventListener('click', (e) => { if (e.target === modal) closeStudio(); });
+  $('#closeAnywearModalBtn')?.addEventListener('click', () => closeStudio(false));
+  modal?.addEventListener('click', (e) => { if (e.target === modal) closeStudio(false); });
 
+  // Shrink to Floating Capsule while user keeps browsing the store!
+  function shrinkToCapsule() {
+    if (!state.studio.product) selectStudioProduct(PRODUCTS[0]);
+    state.studio.inCapsule = true;
+    if (capsuleEl) capsuleEl.hidden = false;
+    const capThumb = $('#capsuleGarmentThumb');
+    if (capThumb) {
+      capThumb.style.display = state.webcamStream ? 'none' : 'block';
+    }
+    closeStudio(true);
+    showToast('Đã thu nhỏ thành AnyWear Capsule! Lướt web và kéo thả bất kỳ ảnh áo nào vào Capsule để đổi đồ ngay.');
+  }
+
+  $('#studioShrinkCapsuleBtn')?.addEventListener('click', shrinkToCapsule);
+  $('#capsuleExpandBtn')?.addEventListener('click', () => openStudio(state.studio.product));
+  $('#capsuleCloseBtn')?.addEventListener('click', () => {
+    if (capsuleEl) capsuleEl.hidden = true;
+    state.studio.inCapsule = false;
+    stopWebcam();
+  });
+
+  // Document Picture-in-Picture / Floating Window over any store (Pinterest, Google Images, etc.)
+  $('#studioFloatPipBtn')?.addEventListener('click', async () => {
+    const p = state.studio.product || PRODUCTS[0];
+    const garmentUrl = p?.imgFull || p?.img || '';
+    const officialUrl = `https://anywear.live/try-on?preview=1&garment=${encodeURIComponent(garmentUrl)}&from=lalin`;
+
+    const w = 420;
+    const h = 680;
+    const left = Math.max(20, window.screen.availWidth - w - 30);
+    const top = Math.max(20, Math.round((window.screen.availHeight - h) / 2));
+    const popup = window.open(
+      officialUrl,
+      'anywear-studio',
+      `popup=yes,width=${w},height=${h},left=${left},top=${top}`
+    );
+    if (popup) {
+      shrinkToCapsule();
+      showToast('Đã mở cửa sổ nổi AnyWear.Live! Bạn có thể kéo thả ảnh từ Pinterest, Google Images hoặc Lalin vào cửa sổ đó.');
+    } else {
+      showToast('Vui lòng cho phép mở cửa sổ bật lên (Pop-up) trên trình duyệt để thả nổi AnyWear.');
+    }
+  });
+
+  // Official AnyWear.Live Cloud Bridge Button
+  $('#openOfficialAnywearPopupBtn')?.addEventListener('click', () => {
+    const p = state.studio.product || PRODUCTS[0];
+    const garmentUrl = p?.imgFull || p?.img || '';
+    const officialUrl = `https://anywear.live/try-on?preview=1&garment=${encodeURIComponent(garmentUrl)}&from=lalin`;
+    window.open(officialUrl, '_blank', 'noopener');
+  });
+
+  // Tier selector (Flash / Standard / Ultra)
+  $$('[data-aw-tier]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      state.studio.tier = btn.dataset.awTier;
+      $$('[data-aw-tier]').forEach((b) => b.classList.toggle('active', b === btn));
+      const names = { flash: 'Flash (Nhanh nhất)', standard: 'Standard (Mượt mà)', ultra: 'Ultra (Siêu thực)' };
+      showToast(`Đã chuyển chế độ AnyWear sang ${names[state.studio.tier] || 'Standard'}.`);
+    });
+  });
+
+  // ==========================================================================
+  // 8. UNIVERSAL GARMENT INPUT: UPLOAD, PASTE (Ctrl+V), DRAG & DROP, URL LINK
+  // ==========================================================================
+  function createCustomGarmentObject(imgSrc, label = 'Trang phục tải lên') {
+    return {
+      id: `custom-${Date.now()}`,
+      title: label,
+      category: 'yem',
+      fabric: 'AnyWear Custom Upload',
+      price: 1690000,
+      rent: 480000,
+      sizes: ['S', 'M', 'L'],
+      colors: ['Tùy chỉnh'],
+      url: 'https://anywear.live/try-on?preview=1',
+      img: imgSrc,
+      imgAlt: imgSrc,
+      imgFull: imgSrc,
+      imgAltFull: imgSrc,
+      gallery: [imgSrc]
+    };
+  }
+
+  function handleFileInput(file, sourceLabel = 'Ảnh tải lên') {
+    if (!file) return;
+    if (!file.type.startsWith('image/') && !/\.hei[cf]$/i.test(file.name)) {
+      showToast('Vui lòng chọn file hình ảnh (JPG, PNG, WebP, AVIF, Screenshot).');
+      return;
+    }
+    const objUrl = URL.createObjectURL(file);
+    const cleanName = file.name ? file.name.replace(/\.[^.]+$/, '').slice(0, 42) : sourceLabel;
+    const customProd = createCustomGarmentObject(objUrl, `AnyWear: ${cleanName}`);
+    $('#studioAddSheet')?.setAttribute('hidden', '');
+    if (state.studio.inCapsule && !capsuleEl?.hidden) {
+      selectStudioProduct(customProd);
+      showToast(`Đã đổi sang "${customProd.title}" ngay trong Capsule!`);
+    } else {
+      openStudio(customProd, { autoStartCam: false });
+      showToast(`Đã tải "${customProd.title}" vào phòng thử AnyWear.Live!`);
+    }
+  }
+
+  // Handle URL input (supports Lalin product links, direct image URLs, Pinterest/Google Images links)
+  function handleUrlInput(rawUrl) {
+    const trimmed = String(rawUrl || '').trim();
+    if (!trimmed) return;
+    let parsed;
+    try {
+      parsed = new URL(trimmed);
+    } catch {
+      showToast('Đường dẫn (URL) không hợp lệ. Hãy dán link bắt đầu bằng https://');
+      return;
+    }
+
+    // 1. Check if it matches one of the 69 Lalin products by handle
+    const matchedLalin = PRODUCTS.find((p) => trimmed.includes(p.handle));
+    if (matchedLalin) {
+      // Show candidate images from that Lalin product page (just like AnyWear's candidate picker!)
+      const candBox = $('#studioCandidateBox');
+      const candGrid = $('#studioCandidateGrid');
+      if (candBox && candGrid && modal?.classList.contains('open')) {
+        candBox.hidden = false;
+        candGrid.innerHTML = matchedLalin.gallery.map((src, idx) => `
+          <button type="button" data-pick-lalin="${matchedLalin.id}" data-pick-idx="${idx}">
+            <img src="${src}" alt="${esc(matchedLalin.title)}" />
+          </button>
+        `).join('');
+        showToast(`Tìm thấy ${matchedLalin.gallery.length} ảnh từ "${matchedLalin.title}" — bấm chọn ảnh để thử!`);
+      } else {
+        openStudio(matchedLalin);
+        showToast(`Đã tải sản phẩm Lalin: "${matchedLalin.title}"!`);
+      }
+      return;
+    }
+
+    // 2. Extract nested image URL if it's a Google Images or Pinterest redirect link
+    const imgParam = parsed.searchParams.get('imgurl') || parsed.searchParams.get('media') || parsed.searchParams.get('url');
+    const finalImgUrl = imgParam || parsed.href;
+
+    const hostLabel = parsed.hostname.replace(/^www\./, '');
+    const customProd = createCustomGarmentObject(finalImgUrl, `Trang phục từ ${hostLabel}`);
+    $('#studioAddSheet')?.setAttribute('hidden', '');
+    if (state.studio.inCapsule && !capsuleEl?.hidden) {
+      selectStudioProduct(customProd);
+      showToast(`Đã đổi trang phục từ ${hostLabel} trong Capsule!`);
+    } else {
+      openStudio(customProd);
+      showToast(`Đã nạp ảnh trang phục từ ${hostLabel}! Bấm "Bật Camera Live" hoặc "Mở trên AnyWear.Live ↗" để thử.`);
+    }
+  }
+
+  // Candidate grid click inside Add Sheet
+  $('#studioCandidateGrid')?.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-pick-lalin]');
+    if (!btn) return;
+    const prod = PRODUCTS.find((p) => p.id === btn.dataset.pickLalin);
+    const idx = Number(btn.dataset.pickIdx || 0);
+    if (prod) {
+      selectStudioProduct(prod);
+      setStudioImage(idx);
+      $('#studioAddSheet')?.setAttribute('hidden', '');
+      showToast(`Đã chọn góc ảnh #${idx + 1} của "${prod.title}"!`);
+    }
+  });
+
+  // Extract dropped dataTransfer (Files, <img src> from other websites, product card drag, or URL)
+  function handleDataTransferDrop(dt) {
+    if (!dt) return;
+    // 1. Internal Lalin product drag
+    const internalId = dt.getData('application/x-anywear-id');
+    if (internalId) {
+      const prod = PRODUCTS.find((p) => p.id === internalId);
+      if (prod) {
+        if (state.studio.inCapsule && !capsuleEl?.hidden) {
+          selectStudioProduct(prod);
+          showToast(`Đã đổi sang "${prod.title}" trong Capsule!`);
+        } else {
+          openStudio(prod);
+          showToast(`Đã chọn "${prod.title}" để thử đồ!`);
+        }
+        return;
+      }
+    }
+
+    // 2. Dropped image file from computer
+    if (dt.files && dt.files.length > 0) {
+      handleFileInput(dt.files[0], 'Ảnh kéo thả');
+      return;
+    }
+
+    // 3. Dropped HTML `<img>` from Pinterest, Google Images, or any website
+    const html = dt.getData('text/html');
+    if (html) {
+      const m = html.match(/<img[^>]+src=["']([^"']+)["']/i);
+      if (m && m[1]) {
+        handleUrlInput(m[1]);
+        return;
+      }
+    }
+
+    // 4. Dropped URI / plain text URL
+    const uri = dt.getData('text/uri-list') || dt.getData('text/plain');
+    if (uri) {
+      handleUrlInput(uri.split(/\r?\n/)[0]);
+    }
+  }
+
+  // Bind Landing Page Universal Hub Controls
+  const hubFileInput = $('#hubFileInput');
+  $('#hubUploadBtn')?.addEventListener('click', () => hubFileInput?.click());
+  $('#trayQuickUploadBtn')?.addEventListener('click', () => hubFileInput?.click());
+  $('#studioUploadFileBtn')?.addEventListener('click', () => hubFileInput?.click());
+  hubFileInput?.addEventListener('change', (e) => {
+    if (e.target.files?.[0]) handleFileInput(e.target.files[0]);
+    e.target.value = '';
+  });
+
+  $('#hubOpenCameraNowBtn')?.addEventListener('click', () => {
+    openStudio(state.studio.product || PRODUCTS[0], { autoStartCam: true });
+  });
+
+  $('#hubLinkForm')?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const input = $('#hubLinkInput');
+    if (input?.value.trim()) {
+      handleUrlInput(input.value.trim());
+      input.value = '';
+    }
+  });
+
+  $('#studioLinkForm')?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const input = $('#studioLinkInput');
+    if (input?.value.trim()) {
+      handleUrlInput(input.value.trim());
+      input.value = '';
+    }
+  });
+
+  // Open / close Add Clothes sheet inside Studio
+  $('#studioAddClothesBtn')?.addEventListener('click', () => {
+    const sheet = $('#studioAddSheet');
+    if (sheet) sheet.hidden = !sheet.hidden;
+  });
+  $('#closeAddSheetBtn')?.addEventListener('click', () => {
+    $('#studioAddSheet')?.setAttribute('hidden', '');
+  });
+
+  // Drag & Drop on Hub, Studio Viewport, and Floating Capsule
+  function bindDropZone(el, activeClass) {
+    if (!el) return;
+    el.addEventListener('dragenter', (e) => { e.preventDefault(); el.classList.add(activeClass); });
+    el.addEventListener('dragover', (e) => { e.preventDefault(); el.classList.add(activeClass); });
+    el.addEventListener('dragleave', (e) => {
+      if (!el.contains(e.relatedTarget)) el.classList.remove(activeClass);
+    });
+    el.addEventListener('drop', (e) => {
+      e.preventDefault();
+      el.classList.remove(activeClass);
+      handleDataTransferDrop(e.dataTransfer);
+    });
+  }
+
+  bindDropZone($('#hubDropZone'), 'drag-over');
+  bindDropZone($('#studioDropViewport'), 'dragging-over');
+  bindDropZone(capsuleEl, 'capsule-drop-active');
+
+  // Global Clipboard Paste (Ctrl+V / Cmd+V) for screenshots, copied images, or product links
+  document.addEventListener('paste', (e) => {
+    if (e.target.closest('input, textarea')) return;
+    const cb = e.clipboardData;
+    if (!cb) return;
+    const imgFile = Array.from(cb.files || []).find((f) => f.type.startsWith('image/'));
+    if (imgFile) {
+      e.preventDefault();
+      handleFileInput(imgFile, 'Screenshot Ctrl+V');
+      return;
+    }
+    const text = cb.getData('text/plain')?.trim();
+    if (text && /^https?:\/\//i.test(text)) {
+      e.preventDefault();
+      handleUrlInput(text);
+    }
+  });
+
+  // ==========================================================================
+  // 9. CAMERA & MOTION-TRACKING CONTROLS INSIDE STUDIO
+  // ==========================================================================
   $('#studioThumbs')?.addEventListener('click', (e) => {
     const t = e.target.closest('[data-thumb]');
     if (t) setStudioImage(Number(t.dataset.thumb));
@@ -660,17 +1294,64 @@
     renderChips();
   });
 
-  $('#studioFlipAngleBtn')?.addEventListener('click', () => setStudioImage(state.studio.imgIndex + 1));
-
-  $('#studioToggleMeshBtn')?.addEventListener('click', (e) => {
-    const guides = $('#arBodyGuides');
-    if (!guides) return;
-    const hidden = guides.style.opacity === '0';
-    guides.style.opacity = hidden ? '1' : '0';
-    e.currentTarget.classList.toggle('active', !hidden);
+  // Auto Motion Track toggle
+  $('#studioAutoTrackBtn')?.addEventListener('click', (e) => {
+    state.studio.autoTrack = !state.studio.autoTrack;
+    e.currentTarget.classList.toggle('active', state.studio.autoTrack);
+    e.currentTarget.textContent = state.studio.autoTrack ? '🎯 Bám Chuyển Động: BẬT' : '🎯 Bám Chuyển Động: TẮT';
+    showToast(state.studio.autoTrack
+      ? 'Đã bật Bám Chuyển Động Cơ Thể (Auto Motion Track).'
+      : 'Đã tắt Bám Chuyển Động — bạn có thể kéo thả cố định vị trí áo.');
   });
 
-  // Lalin size chart (approx.): S ≈ ngực 82–86 / eo 64–66, M ≈ 86–90 / 68–70, L ≈ 90–94 / 72–74
+  // AI Background Matte toggle
+  $('#studioBgMatteBtn')?.addEventListener('click', (e) => {
+    state.studio.aiMatte = !state.studio.aiMatte;
+    e.currentTarget.classList.toggle('active', state.studio.aiMatte);
+    showToast(state.studio.aiMatte
+      ? 'Đã bật Tách Nền AI — tự động làm trong suốt nền sáng quanh trang phục.'
+      : 'Đang hiển thị khung ảnh gốc.');
+  });
+
+  // Hold to see yourself button (exact AnyWear.Live feature)
+  const holdSelfBtn = $('#studioHoldSelfBtn');
+  if (holdSelfBtn) {
+    const setHold = (val) => {
+      state.studio.holdOriginal = val;
+      holdSelfBtn.setAttribute('aria-pressed', String(val));
+      holdSelfBtn.textContent = val ? 'Đang hiển thị camera gốc' : 'Giữ để xem camera gốc';
+    };
+    holdSelfBtn.addEventListener('pointerdown', () => setHold(true));
+    holdSelfBtn.addEventListener('pointerup', () => setHold(false));
+    holdSelfBtn.addEventListener('pointerleave', () => setHold(false));
+    holdSelfBtn.addEventListener('pointercancel', () => setHold(false));
+  }
+
+  // Drag & mouse-wheel zoom directly on the Live Canvas to fine-tune garment placement
+  if (liveCanvas) {
+    let dragging = false; let sx = 0; let sy = 0; let ox = 0; let oy = 0;
+    liveCanvas.addEventListener('pointerdown', (e) => {
+      dragging = true;
+      sx = e.clientX;
+      sy = e.clientY;
+      ox = tracker.manualX;
+      oy = tracker.manualY;
+      liveCanvas.setPointerCapture(e.pointerId);
+    });
+    liveCanvas.addEventListener('pointermove', (e) => {
+      if (!dragging) return;
+      tracker.manualX = ox + (e.clientX - sx);
+      tracker.manualY = oy + (e.clientY - sy);
+    });
+    const endDrag = () => { dragging = false; };
+    liveCanvas.addEventListener('pointerup', endDrag);
+    liveCanvas.addEventListener('pointercancel', endDrag);
+    liveCanvas.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      tracker.manualScale = Math.max(0.55, Math.min(2.1, tracker.manualScale - e.deltaY * 0.001));
+    }, { passive: false });
+  }
+
   function recommendSize() {
     const p = state.studio.product;
     const waist = Number(inputWaist?.value || 64);
@@ -678,7 +1359,7 @@
     let size = 'S';
     if (waist > 70 || weight > 56) size = 'L';
     else if (waist > 66 || weight > 51) size = 'M';
-    if (!p || !p.sizes.length) return null;
+    if (!p || !p.sizes?.length) return null;
     return p.sizes.includes(size) ? size : p.sizes[p.sizes.length - 1];
   }
 
@@ -696,16 +1377,14 @@
     const outOfRange = waist > 78 || w > 66;
     const fit = Math.round(Math.max(72, Math.min(99, 99 - Math.abs(162 - h) * 0.2 - Math.max(0, waist - 74) * 1.5 - Math.max(0, 58 - waist) * 1.2)));
     $('#studioFitPercent').textContent = `${fit}%`;
-    $('#studioRecommendedSize').innerHTML = !p || !p.sizes.length
+    $('#studioRecommendedSize').innerHTML = !p || !p.sizes?.length
       ? 'Phụ kiện: <strong>Free size</strong>'
       : outOfRange
         ? `Khuyên dùng: <strong>Size ${rec} + chỉnh sửa / may đo riêng</strong>`
         : `Khuyên dùng: <strong>Size ${rec}</strong> (bảng size Lalin)`;
 
-    // Proportional (uniform) preview — no more stretched/distorted model image
     const scale = 1 + (h - 163) * 0.002;
-    studioImg.style.transform = `scale(${scale.toFixed(3)})`;
-    if (arProjection) arProjection.style.setProperty('--fit-scale', (1 + (waist - 64) * 0.008).toFixed(3));
+    if (studioImg) studioImg.style.transform = `scale(${scale.toFixed(3)})`;
   }
 
   [inputHeight, inputWeight, inputWaist].forEach((el) => el?.addEventListener('input', () => {
@@ -724,48 +1403,78 @@
   $$('[data-light]').forEach((btn) => btn.addEventListener('click', () => {
     $$('[data-light]').forEach((b) => b.classList.toggle('active', b === btn));
     const [filter, label] = LIGHTS[btn.dataset.light] || LIGHTS.daylight;
-    studioImg.style.filter = filter;
-    if (webcamVideo) webcamVideo.style.filter = filter;
+    if (studioImg) studioImg.style.filter = filter;
+    if (liveCanvas) liveCanvas.style.filter = filter;
     $('#lightingModeLabel').textContent = label;
   }));
 
-  // --- Webcam AR mirror -----------------------------------------------------
+  // --- Start / Stop / Flip Live Webcam --------------------------------------
   const modeAvatarBtn = $('#modeAvatarBtn');
   const modeWebcamBtn = $('#modeWebcamBtn');
-  const arPos = { x: 0, y: 0, scale: 1 };
+  const flipCamBtn = $('#studioFlipCamBtn');
 
-  function applyArTransform() {
-    arProjection.style.transform = `translate(${arPos.x}px, ${arPos.y}px) scale(calc(${arPos.scale} * var(--fit-scale, 1)))`;
+  function formatTimer(sec) {
+    const m = Math.floor(sec / 60);
+    const s = Math.floor(sec % 60);
+    return `${m}:${String(s).padStart(2, '0')}`;
   }
 
-  function showArOverlay(label) {
-    arProjection.classList.add('visible');
-    arProjection.style.pointerEvents = 'auto';
-    arProjection.style.cursor = 'grab';
-    applyArTransform();
-    modeWebcamBtn.classList.add('active');
-    modeAvatarBtn.classList.remove('active');
-    $('#studioStatusLabel').textContent = label;
+  function startSessionTimer() {
+    clearInterval(state.timerId);
+    state.liveStartAt = Date.now();
+    state.timerId = setInterval(() => {
+      const elapsed = (Date.now() - state.liveStartAt) / 1000;
+      const text = formatTimer(elapsed);
+      const t1 = $('#studioLiveTimer');
+      const t2 = $('#capsuleTimer');
+      if (t1) t1.textContent = text;
+      if (t2) t2.textContent = text;
+    }, 1000);
   }
 
-  async function startWebcam() {
-    if (state.webcamStream) return;
+  async function startWebcam(facing = state.studio.facingMode) {
     if (!navigator.mediaDevices?.getUserMedia || !window.isSecureContext) {
-      showArOverlay('MÔ PHỎNG AR (TRÌNH DUYỆT KHÔNG HỖ TRỢ CAMERA)');
-      showToast('Camera chỉ hoạt động trên HTTPS hoặc localhost. Đang dùng chế độ mô phỏng AR.');
+      showToast('Trình duyệt cần chạy trên HTTPS hoặc localhost để bật Camera trực tiếp.');
       return;
     }
     try {
-      state.webcamStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
-      if (!modal.classList.contains('open')) { stopWebcam(); return; } // modal closed while waiting for permission
+      if (state.webcamStream) {
+        state.webcamStream.getTracks().forEach((t) => t.stop());
+      }
+      state.studio.facingMode = facing;
+      state.webcamStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: facing }, width: { ideal: 1280 }, height: { ideal: 720 } },
+        audio: false
+      });
+
       webcamVideo.srcObject = state.webcamStream;
-      webcamVideo.classList.add('active');
-      stage.classList.add('webcam-on');
-      showArOverlay('CAMERA AR TRỰC TIẾP • KÉO ẢNH ÁO ĐỂ KHỚP DÁNG');
-      showToast('Đã bật camera. Kéo để di chuyển áo, cuộn chuột để phóng to/thu nhỏ.');
+      await webcamVideo.play().catch(() => {});
+
+      stage?.classList.add('webcam-on');
+      if (holdSelfBtn) holdSelfBtn.hidden = false;
+      if (flipCamBtn) flipCamBtn.hidden = false;
+
+      const liveBadge = $('#studioLiveBadge');
+      if (liveBadge) liveBadge.classList.add('is-live');
+      const liveText = $('#studioLiveStatusText');
+      if (liveText) liveText.textContent = 'LIVE';
+
+      if (modeWebcamBtn) {
+        modeWebcamBtn.textContent = '⏹ Tắt Camera';
+        modeWebcamBtn.classList.add('live-on');
+      }
+      modeAvatarBtn?.classList.remove('active');
+
+      const capThumb = $('#capsuleGarmentThumb');
+      if (capThumb) capThumb.style.display = 'none';
+
+      startSessionTimer();
+      if (!tracker.rafId) {
+        tracker.rafId = requestAnimationFrame(renderLiveLoop);
+      }
+      showToast('Camera AnyWear.Live đã bật! Hãy di chuyển cơ thể để xem trang phục bám theo chuyển động của bạn.');
     } catch (err) {
-      showArOverlay('MÔ PHỎNG AR (CHƯA CẤP QUYỀN CAMERA)');
-      showToast('Không truy cập được camera — đang dùng chế độ AR mô phỏng.');
+      showToast('Không thể truy cập Camera. Hãy cấp quyền Camera trên thanh địa chỉ trình duyệt hoặc mở trên AnyWear.Live ↗');
     }
   }
 
@@ -774,40 +1483,41 @@
       state.webcamStream.getTracks().forEach((t) => t.stop());
       state.webcamStream = null;
     }
-    if (webcamVideo) { webcamVideo.srcObject = null; webcamVideo.classList.remove('active'); }
+    if (tracker.rafId) {
+      cancelAnimationFrame(tracker.rafId);
+      tracker.rafId = null;
+    }
+    clearInterval(state.timerId);
+    if (webcamVideo) webcamVideo.srcObject = null;
     stage?.classList.remove('webcam-on');
-    if (arProjection) { arProjection.classList.remove('visible'); arProjection.style.pointerEvents = 'none'; }
+    if (holdSelfBtn) holdSelfBtn.hidden = true;
+    if (flipCamBtn) flipCamBtn.hidden = true;
+
+    const liveBadge = $('#studioLiveBadge');
+    if (liveBadge) liveBadge.classList.remove('is-live');
+    const liveText = $('#studioLiveStatusText');
+    if (liveText) liveText.textContent = 'PREVIEW';
+
+    if (modeWebcamBtn) {
+      modeWebcamBtn.textContent = '📷 Bật Camera Live';
+      modeWebcamBtn.classList.remove('live-on');
+    }
     modeAvatarBtn?.classList.add('active');
-    modeWebcamBtn?.classList.remove('active');
-    const label = $('#studioStatusLabel');
-    if (label) label.textContent = 'ANYWEAR LIVE VIRTUAL • AVATAR TƯƠNG TÁC';
+
+    const capThumb = $('#capsuleGarmentThumb');
+    if (capThumb) capThumb.style.display = 'block';
   }
 
-  modeWebcamBtn?.addEventListener('click', startWebcam);
+  modeWebcamBtn?.addEventListener('click', () => {
+    if (state.webcamStream) stopWebcam();
+    else startWebcam(state.studio.facingMode);
+  });
   modeAvatarBtn?.addEventListener('click', stopWebcam);
 
-  if (arProjection) {
-    let dragging = false; let sx = 0; let sy = 0; let ox = 0; let oy = 0;
-    arProjection.addEventListener('pointerdown', (e) => {
-      dragging = true; sx = e.clientX; sy = e.clientY; ox = arPos.x; oy = arPos.y;
-      arProjection.setPointerCapture(e.pointerId);
-      arProjection.style.cursor = 'grabbing';
-    });
-    arProjection.addEventListener('pointermove', (e) => {
-      if (!dragging) return;
-      arPos.x = ox + (e.clientX - sx);
-      arPos.y = oy + (e.clientY - sy);
-      applyArTransform();
-    });
-    const end = () => { dragging = false; arProjection.style.cursor = 'grab'; };
-    arProjection.addEventListener('pointerup', end);
-    arProjection.addEventListener('pointercancel', end);
-    arProjection.addEventListener('wheel', (e) => {
-      e.preventDefault();
-      arPos.scale = Math.max(0.5, Math.min(2.2, arPos.scale - e.deltaY * 0.001));
-      applyArTransform();
-    }, { passive: false });
-  }
+  flipCamBtn?.addEventListener('click', () => {
+    const nextFacing = state.studio.facingMode === 'user' ? 'environment' : 'user';
+    startWebcam(nextFacing);
+  });
 
   $('#studioConfirmRentBtn')?.addEventListener('click', () => studioAdd('rent'));
   $('#studioConfirmBuyBtn')?.addEventListener('click', () => studioAdd('buy'));
@@ -815,13 +1525,13 @@
   function studioAdd(mode) {
     const p = state.studio.product;
     if (!p) return;
-    if (p.sizes.length && !state.studio.size) { showToast('Vui lòng chọn size trước.'); return; }
+    if (p.sizes?.length && !state.studio.size) { showToast('Vui lòng chọn size trước.'); return; }
     addToBag(p, mode, state.studio.size || 'Free', state.studio.color);
-    closeStudio();
+    closeStudio(false);
   }
 
   // ==========================================================================
-  // 8. BAG DRAWER
+  // 10. BAG DRAWER
   // ==========================================================================
   const bagDrawer = $('#bagDrawer');
 
@@ -847,8 +1557,8 @@
           <small>${i.mode === 'rent' ? 'THUÊ 3 NGÀY' : 'MUA'} · SIZE ${esc(i.size)}${i.color ? ' · ' + esc(i.color) : ''} · x${i.qty}</small>
           <small style="color: var(--accent-gold);">${fmt(i.unit * i.qty)}</small>
         </div>
-        <button class="remove-btn" data-remove="${idx}" title="Xóa">✕</button>
-      </div>`).join('') : '<p class="bag-empty">Chưa có sản phẩm. Hãy thử đồ bằng Anywear và thêm vào giỏ nhé!</p>';
+        <button type="button" class="remove-btn" data-remove="${idx}" title="Xóa">✕</button>
+      </div>`).join('') : '<p class="bag-empty">Chưa có sản phẩm. Hãy thử đồ bằng AnyWear.Live và thêm vào giỏ nhé!</p>';
     $('#bagTotal').textContent = fmt(state.bag.reduce((s, i) => s + i.unit * i.qty, 0));
   }
 
@@ -880,20 +1590,31 @@
 
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return;
-    if (modal?.classList.contains('open')) closeStudio();
+    if (modal?.classList.contains('open')) closeStudio(false);
     else if (bagDrawer?.classList.contains('open')) closeBag();
   });
 
-  // Stop the camera if the tab is hidden / page unloaded
-  document.addEventListener('visibilitychange', () => { if (document.hidden) stopWebcam(); });
   window.addEventListener('pagehide', stopWebcam);
+
+  // Support URL query parameter `?garment=<url>` on our own landing page too!
+  function checkInitialGarmentQuery() {
+    const params = new URLSearchParams(window.location.search);
+    const garmentParam = params.get('garment');
+    if (garmentParam) {
+      handleUrlInput(garmentParam);
+    }
+  }
 
   // ==========================================================================
   // INIT
   // ==========================================================================
+  if (PRODUCTS.length) {
+    state.recentLooks = PRODUCTS.slice(0, 4);
+  }
   renderLookbookFilters();
   renderLookbook();
   renderProductFilters();
   renderProducts();
   renderBag();
+  checkInitialGarmentQuery();
 })();
