@@ -155,39 +155,99 @@ const GARMENT_FIT_PRESETS = {
  */
 const SAMPLE_MODELS = [
   {
-    id: 'sample-female-01',
-    name: 'Nữ 01 · Chính diện Studio',
-    desc: 'Dáng chuẩn thời trang, ánh sáng studio cân bằng',
-    src: './assets/sample-model.jpg',
+    id: 'mannequin-female-couture',
+    name: 'Ma nơ canh Nữ · Haute Couture',
+    desc: 'Phom dáng chuẩn người mẫu sàn diễn (90-60-90), eo thon vai chuẩn, tôn dáng áo lụa & đầm dạ hội',
+    src: './assets/models/mannequin-female-couture.jpg',
     gender: 'female',
+    pose: {
+      lShoulder: { x: 0.346, y: 0.224 },
+      rShoulder: { x: 0.654, y: 0.224 },
+      lHip: { x: 0.365, y: 0.540 },
+      rHip: { x: 0.635, y: 0.540 },
+      nose: { x: 0.500, y: 0.155 },
+    },
+    fitSettings: {
+      scaleX: 100,
+      scaleY: 100,
+      offsetX: 0,
+      offsetY: 0,
+      fabricSmoothness: 88,
+      meshTightness: 85,
+    },
   },
   {
-    id: 'sample-female-02',
-    name: 'Nữ 02 · Nắng nhẹ thanh lịch',
-    desc: 'Dáng đứng thanh thoát, phù hợp áo tơ tằm & cổ yếm',
-    src: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=900&q=80',
-    gender: 'female',
-  },
-  {
-    id: 'sample-female-03',
-    name: 'Nữ 03 · Thời trang dạ tiệc',
-    desc: 'Dáng bán thân gần, tôn chi tiết cổ và ngực áo',
-    src: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=900&q=80',
-    gender: 'female',
-  },
-  {
-    id: 'sample-male-01',
-    name: 'Nam / Unisex · Phom suông',
-    desc: 'Dáng nam vai rộng, thử áo khoác & áo suông',
-    src: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=900&q=80',
+    id: 'mannequin-male-streetwear',
+    name: 'Ma nơ canh Nam · Athletic Streetwear',
+    desc: 'Phom thể thao vai rộng chữ V (V-taper), ngực nở, chuẩn phom áo thun boxy & hoodie',
+    src: './assets/models/mannequin-male-streetwear.jpg',
     gender: 'male',
+    pose: {
+      lShoulder: { x: 0.285, y: 0.304 },
+      rShoulder: { x: 0.715, y: 0.304 },
+      lHip: { x: 0.366, y: 0.520 },
+      rHip: { x: 0.633, y: 0.520 },
+      nose: { x: 0.500, y: 0.185 },
+    },
+    fitSettings: {
+      scaleX: 106,
+      scaleY: 102,
+      offsetX: 0,
+      offsetY: 2,
+      fabricSmoothness: 85,
+      meshTightness: 88,
+    },
+  },
+  {
+    id: 'mannequin-tailor-linen',
+    name: 'Ma nơ canh May Đo · Vintage Atelier',
+    desc: 'Cốt may đo vải lanh Pháp cổ điển với đường chỉ định vị tỉ lệ vàng, chuẩn may đo Bespoke',
+    src: './assets/models/mannequin-tailor-linen.jpg',
+    gender: 'unisex',
+    pose: {
+      lShoulder: { x: 0.346, y: 0.210 },
+      rShoulder: { x: 0.664, y: 0.210 },
+      lHip: { x: 0.355, y: 0.530 },
+      rHip: { x: 0.645, y: 0.530 },
+      nose: { x: 0.500, y: 0.145 },
+    },
+    fitSettings: {
+      scaleX: 102,
+      scaleY: 100,
+      offsetX: 0,
+      offsetY: 0,
+      fabricSmoothness: 90,
+      meshTightness: 86,
+    },
+  },
+  {
+    id: 'mannequin-full-minimal',
+    name: 'Ma nơ canh Studio · Tối Giản Toàn Thân',
+    desc: 'Ma nơ canh sợi thủy tinh trắng mờ studio, phom dáng trung tính hiện đại thanh lịch',
+    src: './assets/models/mannequin-full-minimal.jpg',
+    gender: 'unisex',
+    pose: {
+      lShoulder: { x: 0.352, y: 0.233 },
+      rShoulder: { x: 0.648, y: 0.233 },
+      lHip: { x: 0.370, y: 0.540 },
+      rHip: { x: 0.630, y: 0.540 },
+      nose: { x: 0.500, y: 0.160 },
+    },
+    fitSettings: {
+      scaleX: 100,
+      scaleY: 100,
+      offsetX: 0,
+      offsetY: 0,
+      fabricSmoothness: 88,
+      meshTightness: 85,
+    },
   },
 ];
 
 export class VirtualTryOnWidget {
   constructor(options = {}) {
     this.options = {
-      defaultSamplePortrait: './assets/sample-model.jpg',
+      defaultSamplePortrait: './assets/models/mannequin-female-couture.jpg',
       autoDetectSelector: '[data-vton-product], [data-product-id]',
       ...options,
     };
@@ -2065,31 +2125,49 @@ export class VirtualTryOnWidget {
       this.staticDetectedPersonSrc === personImg.src ? this.staticDetectedPose : null;
 
     if (!detectedPose) {
-      try {
-        const landmarker = await this._ensurePoseLandmarker('IMAGE');
-        const result = landmarker.detect(personImg);
-        const lm = result?.landmarks?.[0];
-        if (lm && lm.length > 24) {
-          detectedPose = {
-            lShoulder: { x: lm[11].x * W, y: lm[11].y * H, z: (lm[11].z ?? 0) * W, visibility: lm[11].visibility ?? 1 },
-            rShoulder: { x: lm[12].x * W, y: lm[12].y * H, z: (lm[12].z ?? 0) * W, visibility: lm[12].visibility ?? 1 },
-            lHip: { x: lm[23].x * W, y: lm[23].y * H, z: (lm[23].z ?? 0) * W, visibility: lm[23].visibility ?? 1 },
-            rHip: { x: lm[24].x * W, y: lm[24].y * H, z: (lm[24].z ?? 0) * W, visibility: lm[24].visibility ?? 1 },
-            nose: lm[0] ? { x: lm[0].x * W, y: lm[0].y * H, z: (lm[0].z ?? 0) * W, visibility: lm[0].visibility ?? 1 } : null,
-            lElbow: lm[13] ? { x: lm[13].x * W, y: lm[13].y * H, z: (lm[13].z ?? 0) * W, visibility: lm[13].visibility ?? 1 } : null,
-            rElbow: lm[14] ? { x: lm[14].x * W, y: lm[14].y * H, z: (lm[14].z ?? 0) * W, visibility: lm[14].visibility ?? 1 } : null,
-          };
+      // Check if current image is one of the calibrated mannequin presets
+      const matchedPreset = SAMPLE_MODELS.find(
+        (m) =>
+          (this.personDataUrl && this.personDataUrl.includes(m.id)) ||
+          (personImg.src && personImg.src.includes(m.id)) ||
+          (m.src && personImg.src && personImg.src.endsWith(m.src.replace(/^\.\//, '')))
+      ) || (this.personFile ? null : SAMPLE_MODELS[this.selectedModelIdx]);
+
+      if (matchedPreset && matchedPreset.pose) {
+        detectedPose = {
+          lShoulder: { x: matchedPreset.pose.lShoulder.x * W, y: matchedPreset.pose.lShoulder.y * H, z: 0, visibility: 1.0 },
+          rShoulder: { x: matchedPreset.pose.rShoulder.x * W, y: matchedPreset.pose.rShoulder.y * H, z: 0, visibility: 1.0 },
+          lHip: { x: matchedPreset.pose.lHip.x * W, y: matchedPreset.pose.lHip.y * H, z: 0, visibility: 1.0 },
+          rHip: { x: matchedPreset.pose.rHip.x * W, y: matchedPreset.pose.rHip.y * H, z: 0, visibility: 1.0 },
+          nose: matchedPreset.pose.nose ? { x: matchedPreset.pose.nose.x * W, y: matchedPreset.pose.nose.y * H, z: 0, visibility: 1.0 } : null,
+        };
+      } else {
+        try {
+          const landmarker = await this._ensurePoseLandmarker('IMAGE');
+          const result = landmarker.detect(personImg);
+          const lm = result?.landmarks?.[0];
+          if (lm && lm.length > 24) {
+            detectedPose = {
+              lShoulder: { x: lm[11].x * W, y: lm[11].y * H, z: (lm[11].z ?? 0) * W, visibility: lm[11].visibility ?? 1 },
+              rShoulder: { x: lm[12].x * W, y: lm[12].y * H, z: (lm[12].z ?? 0) * W, visibility: lm[12].visibility ?? 1 },
+              lHip: { x: lm[23].x * W, y: lm[23].y * H, z: (lm[23].z ?? 0) * W, visibility: lm[23].visibility ?? 1 },
+              rHip: { x: lm[24].x * W, y: lm[24].y * H, z: (lm[24].z ?? 0) * W, visibility: lm[24].visibility ?? 1 },
+              nose: lm[0] ? { x: lm[0].x * W, y: lm[0].y * H, z: (lm[0].z ?? 0) * W, visibility: lm[0].visibility ?? 1 } : null,
+              lElbow: lm[13] ? { x: lm[13].x * W, y: lm[13].y * H, z: (lm[13].z ?? 0) * W, visibility: lm[13].visibility ?? 1 } : null,
+              rElbow: lm[14] ? { x: lm[14].x * W, y: lm[14].y * H, z: (lm[14].z ?? 0) * W, visibility: lm[14].visibility ?? 1 } : null,
+            };
+          }
+        } catch (e) {
+          console.warn('[VTON] Static pose detection fallback:', e);
         }
-      } catch (e) {
-        console.warn('[VTON] Static pose detection fallback:', e);
       }
 
       if (!detectedPose) {
         detectedPose = {
-          lShoulder: { x: W * 0.35, y: H * 0.32, visibility: 0.9 },
-          rShoulder: { x: W * 0.65, y: H * 0.32, visibility: 0.9 },
-          lHip: { x: W * 0.38, y: H * 0.65, visibility: 0.9 },
-          rHip: { x: W * 0.62, y: H * 0.65, visibility: 0.9 },
+          lShoulder: { x: W * 0.35, y: H * 0.23, visibility: 0.9 },
+          rShoulder: { x: W * 0.65, y: H * 0.23, visibility: 0.9 },
+          lHip: { x: W * 0.37, y: H * 0.54, visibility: 0.9 },
+          rHip: { x: W * 0.63, y: H * 0.54, visibility: 0.9 },
         };
       }
 

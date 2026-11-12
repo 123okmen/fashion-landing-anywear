@@ -1141,7 +1141,8 @@
 
   const SAMPLE_PORTRAIT_PRESETS = [
     {
-      title: 'Mẫu 01 — Chính diện Studio',
+      title: 'Ma nơ canh Nữ — Haute Couture',
+      imageSrc: './assets/models/mannequin-female-couture.jpg',
       bgTop: '#f3ede2',
       bgBottom: '#dfd5c5',
       skinTone: '#f2ccb0',
@@ -1149,11 +1150,14 @@
       hairColor: '#1f1a18',
       baseTopColor: '#e5e0d8',
       skirtColor: '#232329',
-      shoulderScale: 1.0,
-      poseShiftX: 0
+      shoulderScale: 0.96,
+      poseShiftX: 0,
+      topY: 270,
+      dressTopY: 270,
     },
     {
-      title: 'Mẫu 02 — Ánh nắng Thảo Điền',
+      title: 'Ma nơ canh Nam — Athletic Streetwear',
+      imageSrc: './assets/models/mannequin-male-streetwear.jpg',
       bgTop: '#f8efe0',
       bgBottom: '#e5cfa8',
       skinTone: '#efd0b6',
@@ -1161,11 +1165,14 @@
       hairColor: '#2c1f19',
       baseTopColor: '#ebe4d8',
       skirtColor: '#f5f2eb',
-      shoulderScale: 0.97,
-      poseShiftX: 6
+      shoulderScale: 1.15,
+      poseShiftX: 0,
+      topY: 360,
+      dressTopY: 340,
     },
     {
-      title: 'Mẫu 03 — Dáng đứng Lookbook',
+      title: 'Ma nơ canh May Đo — Vintage Atelier',
+      imageSrc: './assets/models/mannequin-tailor-linen.jpg',
       bgTop: '#e8ecf2',
       bgBottom: '#cfd6e2',
       skinTone: '#f4d5be',
@@ -1173,10 +1180,42 @@
       hairColor: '#181619',
       baseTopColor: '#dfe3ea',
       skirtColor: '#1c1d24',
-      shoulderScale: 1.03,
-      poseShiftX: -5
-    }
+      shoulderScale: 0.98,
+      poseShiftX: 0,
+      topY: 255,
+      dressTopY: 255,
+    },
+    {
+      title: 'Ma nơ canh Studio — Tối Giản Toàn Thân',
+      imageSrc: './assets/models/mannequin-full-minimal.jpg',
+      bgTop: '#f1f3f5',
+      bgBottom: '#dce0e5',
+      skinTone: '#f2ccb0',
+      skinShadow: '#d9aa8b',
+      hairColor: '#1f1a18',
+      baseTopColor: '#e5e0d8',
+      skirtColor: '#232329',
+      shoulderScale: 0.98,
+      poseShiftX: 0,
+      topY: 280,
+      dressTopY: 280,
+    },
   ];
+
+  // Preload mannequin images for instant rendering in photo section
+  SAMPLE_PORTRAIT_PRESETS.forEach((p) => {
+    if (p.imageSrc) {
+      const img = new Image();
+      img.src = p.imageSrc;
+      img.onload = () => {
+        p.img = img;
+        if (vtonState.active && !vtonState.customPortraitImg) {
+          renderStaticPhotoVtonCanvas();
+        }
+      };
+      p.img = img;
+    }
+  });
 
   function setStudioMode(mode) {
     const isPhoto = mode === 'photo';
@@ -1705,6 +1744,14 @@ def run_vton(req: VtonRequest):
       const dw = iw * scale;
       const dh = ih * scale;
       bCtx.drawImage(img, (W - dw) / 2, (H - dh) / 2, dw, dh);
+    } else if (preset.img && (preset.img.complete || preset.img.naturalWidth > 0)) {
+      const img = preset.img;
+      const iw = img.naturalWidth || img.width || 896;
+      const ih = img.naturalHeight || img.height || 1200;
+      const scale = Math.max(W / iw, H / ih);
+      const dw = iw * scale;
+      const dh = ih * scale;
+      bCtx.drawImage(img, (W - dw) / 2, (H - dh) / 2, dw, dh);
     } else {
       drawSamplePortraitBase(bCtx, W, H, preset, true);
     }
@@ -1723,7 +1770,7 @@ def run_vton(req: VtonRequest):
       const dh = rImg.height * scale;
       aCtx.drawImage(rImg, (W - dw) / 2, (H - dh) / 2, dw, dh);
     } else {
-      if (vtonState.customPortraitImg) {
+      if (vtonState.customPortraitImg || (preset.img && (preset.img.complete || preset.img.naturalWidth > 0))) {
         aCtx.drawImage(beforeCanvas, 0, 0);
       } else {
         drawSamplePortraitBase(aCtx, W, H, preset, false);
@@ -1739,7 +1786,8 @@ def run_vton(req: VtonRequest):
         const baseW = (isDress ? 520 : 475) * userScale * shoulderRatio * (vtonState.customPortraitImg ? 1.0 : preset.shoulderScale);
         const baseH = (isDress ? 790 : 545) * userScale;
         const cx = W * 0.5 + (vtonState.customPortraitImg ? 0 : preset.poseShiftX) + offsetX;
-        const topY = (isDress ? 318 : 322) + offsetY;
+        const defaultTopY = isDress ? (preset.dressTopY || 318) : (preset.topY || 322);
+        const topY = defaultTopY + offsetY;
 
         aCtx.save();
         // Contact shadow beneath garment collar & hem for realistic depth
