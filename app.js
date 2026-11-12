@@ -103,155 +103,113 @@
    * Monitors Decart AI's `anywear.js` (~17 KB async widget) and updates the status badge
    * with the number of product images automatically detected & pinned with `.vton-btn`.
    */
+  const FREE_VTON_PNG_PRESETS = [
+    {
+      id: 'png-tee-black',
+      name: 'Áo Thun Oversize (PNG)',
+      price: '490.000₫',
+      image: './assets/garments/tee-black.png',
+      category: 'tee'
+    },
+    {
+      id: 'png-jacket-camel',
+      name: 'Blazer Len Camel (PNG)',
+      price: '1.890.000₫',
+      image: './assets/garments/jacket-camel.png',
+      category: 'jacket'
+    },
+    {
+      id: 'png-dress-burgundy',
+      name: 'Váy Lụa Satin Midi (PNG)',
+      price: '1.450.000₫',
+      image: './assets/garments/dress-burgundy.png',
+      category: 'dress'
+    },
+    {
+      id: 'png-shirt-emerald',
+      name: 'Sơ Mi Lụa Emerald (PNG)',
+      price: '890.000₫',
+      image: './assets/garments/shirt-emerald.png',
+      category: 'shirt'
+    }
+  ];
+
+  function toFreeVtonProduct(p) {
+    if (!p) return FREE_VTON_PNG_PRESETS[0];
+    const catMap = {
+      'yem': 'shirt',
+      'to-lua': 'shirt',
+      'gam': 'jacket',
+      'khoac': 'jacket',
+      'set': 'dress',
+      'phu-kien': 'tee'
+    };
+    return {
+      id: p.id || `prod-${Date.now()}`,
+      name: p.title || p.name || 'Thiết kế Lalin',
+      price: typeof p.price === 'number' ? fmt(p.price) : (p.price || ''),
+      image: p.imgFull || p.img || p.image || '',
+      category: catMap[p.category] || p.category || 'shirt',
+      description: p.fabric || ''
+    };
+  }
+
   function syncAnywearWidgetStatus() {
     const extBadge = $('#awExtStatusBadge');
     const countBadge = $('#awDetectedCountBadge');
-    const vtonBtns = $$('.vton-btn');
-    const widgetReady = Boolean(window.DecartWidget || $('#__decart-tryon-widget') || vtonBtns.length > 0);
+    const vtonReady = Boolean(window.FreeVTONWidget);
+    const totalBtns = $$('[data-tryon-id], [data-tryon-now], [data-photo-tryon-id]').length;
+
+    if (vtonReady && !window.__freeVtonCatalogSynced) {
+      window.__freeVtonCatalogSynced = true;
+      window.FreeVTONWidget.setCatalog([
+        ...FREE_VTON_PNG_PRESETS,
+        ...PRODUCTS.slice(0, 4).map(toFreeVtonProduct)
+      ]);
+    }
 
     if (extBadge) {
-      extBadge.textContent = widgetReady
-        ? `✦ Anywear (Decart AI): Đã Kích Hoạt (${vtonBtns.length || 'Auto'} nút Try-On)`
-        : '✦ Anywear (Decart AI): Đang khởi tạo widget...';
+      extBadge.textContent = vtonReady
+        ? '✦ FreeVTON (MediaPipe AR + HF AI): Sẵn Sàng (0₫/lượt)'
+        : '✦ FreeVTON (MediaPipe AR + HF AI): Đang khởi tạo...';
     }
     if (countBadge) {
-      countBadge.textContent = vtonBtns.length > 0
-        ? `🟢 Đã tự động quét & gắn nút Try-On trên ${vtonBtns.length} ảnh sản phẩm`
-        : '🟢 Tự động gắn nút Try-On trên toàn bộ ảnh sản phẩm';
+      countBadge.textContent = totalBtns > 0
+        ? `🟢 Đã gắn nút Try-On (AR Camera + Ảnh Tĩnh) cho ${PRODUCTS.length} thiết kế Lalin + 4 PNG mẫu`
+        : '🟢 Sẵn sàng thử đồ 0₫ Server';
     }
   }
 
-  // Poll briefly as async script loads and pins .vton-btn onto product cards
-  [400, 1200, 2500, 4500].forEach((ms) => setTimeout(syncAnywearWidgetStatus, ms));
+  [250, 800, 1800, 3500].forEach((ms) => setTimeout(syncAnywearWidgetStatus, ms));
 
-  /**
-   * Notifies `anywear.js` when new product cards are rendered or filtered so its
-   * MutationObserver / ResizeObserver immediately pins `.vton-btn` (`Try-On`) onto them.
-   */
   function notifyAnywearProductsRendered() {
-    document.dispatchEvent(new CustomEvent('anywear:products-rendered'));
-    window.dispatchEvent(new Event('scroll'));
-    setTimeout(syncAnywearWidgetStatus, 250);
-    setTimeout(syncAnywearWidgetStatus, 900);
+    setTimeout(syncAnywearWidgetStatus, 120);
   }
 
   /**
-   * Triggers Decart AI's Anywear Live Camera Virtual Try-On widget for a specific
-   * product or `<img>` element, following the exact `_triggerVTOForImg` mechanism
-   * from `shopanywear.com/store/` and `widget-core.js`.
+   * Launches the 100% Free Client-Side Real-Time AR Camera Modal (`FreeVTONWidget`)
+   * powered by `@mediapipe/tasks-vision` (PoseLandmarker) + MediaRecorder 5s Video.
    */
   function triggerAnywearTryOn(product, preferredImgEl = null) {
     const p = product || state.studio.product || PRODUCTS[0];
-    const garmentUrl = p?.imgFull || p?.img || '';
-    const isStandardProduct = p?.id && PRODUCTS.some((x) => x.id === p.id);
-
-    // Close our Quick-View modal if open so Decart AI's Anywear camera widget is unobstructed
     if (modal?.classList.contains('open')) {
       closeStudio();
     }
 
-    // 1. For custom uploaded garments or external links, directly open DecartWidget with postMessage
-    if (!isStandardProduct && garmentUrl) {
-      if (window.DecartWidget && typeof window.DecartWidget.open === 'function') {
-        window.DecartWidget.open({ mobileCamera: 'user' });
-        const deliverToIframe = (delay) => setTimeout(() => {
-          const iframe = document.querySelector('#__decart-tryon-widget iframe');
-          if (iframe && iframe.contentWindow) {
-            iframe.contentWindow.postMessage({
-              type: 'DECART_IMAGE_BTN_CLICK',
-              url: garmentUrl,
-              camera: 'user',
-              imgNaturalW: 1024,
-              imgNaturalH: 1024
-            }, '*');
-            iframe.contentWindow.postMessage({
-              type: 'DECART_DROP_IMAGE',
-              url: garmentUrl
-            }, '*');
-          }
-        }, delay);
-        [250, 700, 1400].forEach(deliverToIframe);
-        showToast(`Đã mở Camera Anywear (Decart AI) cho trang phục "${p?.title || 'tải lên'}"!`);
-        return true;
-      }
-    }
-
-    // 2. Find the best target <img> on the page that has (or can receive) Decart AI's .vton-btn
-    let imgEl = preferredImgEl;
-    if (!imgEl || !document.body.contains(imgEl)) {
-      if (isStandardProduct) {
-        imgEl = $(`#productGrid img[data-garment-id="${p.id}"][data-product-image="true"]`)
-          || $(`#lookbookTrack img[data-garment-id="${p.id}"][data-product-image="true"]`);
-      }
-      if (!imgEl) {
-        imgEl = $('.hero-layer-base') || $('img[data-product-image="true"]');
-      }
-    }
-
-    // 3. If `anywear.js` pinned a `.vton-btn` inside the image's container, click it directly!
-    if (imgEl && imgEl.parentElement) {
-      const vtonBtn = imgEl.parentElement.querySelector('.vton-btn');
-      if (vtonBtn) {
-        vtonBtn.dispatchEvent(new MouseEvent('click', { bubbles: false, cancelable: true }));
-        showToast(`Đã mở Camera Try-On (Anywear Decart AI) cho "${p?.title || 'sản phẩm'}"!`);
-        return true;
-      }
-    }
-
-    // 4. Fallback: check any `.vton-btn` or hover `#__decart-imgbtn`
-    if (imgEl) {
-      imgEl.dispatchEvent(new MouseEvent('mouseover', { bubbles: true, cancelable: true }));
-      const hoverBtn = document.getElementById('__decart-imgbtn');
-      if (hoverBtn) {
-        setTimeout(() => {
-          hoverBtn.dispatchEvent(new MouseEvent('click', { bubbles: false, cancelable: true }));
-        }, 50);
-        showToast(`Đã mở Camera Try-On (Anywear Decart AI) cho "${p?.title || 'sản phẩm'}"!`);
-        return true;
-      }
-    }
-
-    // 5. Direct DecartWidget API + postMessage delivery for custom/uploaded garment URLs
-    if (window.DecartWidget && typeof window.DecartWidget.open === 'function') {
-      window.DecartWidget.open({ mobileCamera: 'user' });
-      if (garmentUrl && !garmentUrl.startsWith('data:')) {
-        const deliverToIframe = (delay) => setTimeout(() => {
-          const iframe = document.querySelector('#__decart-tryon-widget iframe');
-          if (iframe && iframe.contentWindow) {
-            iframe.contentWindow.postMessage({
-              type: 'DECART_IMAGE_BTN_CLICK',
-              url: garmentUrl,
-              camera: 'user',
-              imgNaturalW: 1024,
-              imgNaturalH: 1024
-            }, '*');
-            iframe.contentWindow.postMessage({
-              type: 'DECART_DROP_IMAGE',
-              url: garmentUrl
-            }, '*');
-          }
-        }, delay);
-        [250, 700, 1400].forEach(deliverToIframe);
-      }
-      showToast(`Đã mở phòng thử đồ trực tiếp Anywear (Decart AI) cho "${p?.title || 'sản phẩm'}"!`);
+    if (window.FreeVTONWidget) {
+      syncAnywearWidgetStatus();
+      window.FreeVTONWidget.open(toFreeVtonProduct(p), 'camera');
+      showToast(`🎥 Đang mở Camera AR Miễn Phí (0₫) cho "${p?.title || p?.name || 'sản phẩm'}"!`);
       return true;
     }
 
-    // 6. Click the floating #__decart-pill-btn if present
-    const pillBtn = document.getElementById('__decart-pill-btn');
-    if (pillBtn) {
-      pillBtn.click();
-      showToast('Đã mở AI Fitting Room của Anywear (Decart AI)!');
-      return true;
-    }
-
-    showToast('Đang tải công cụ Anywear (Decart AI)... Vui lòng bấm lại sau giây lát.');
+    showToast('Đang nạp module MediaPipe AR... Vui lòng thử lại sau giây lát.');
     return false;
   }
 
-  // Copy 1-line script button in #anywear-extension-hub
+  // Copy 1-line widget script button in #anywear-extension-hub
   $('#copyAnywearScriptBtn')?.addEventListener('click', () => {
-    const snippet = '<script src="https://anywear.decart.ai/widget/latest/anywear.js" async></script>';
+    const snippet = '<script type="module" src="./vton-widget.js"></script>';
     if (navigator.clipboard?.writeText) {
       navigator.clipboard.writeText(snippet).then(() => {
         const btn = $('#copyAnywearScriptBtn');
@@ -260,7 +218,7 @@
           btn.textContent = '✓ Đã sao chép!';
           setTimeout(() => { btn.textContent = prev; }, 2000);
         }
-        showToast('Đã sao chép 1 dòng code nhúng Anywear (Decart AI) vào clipboard!');
+        showToast('Đã sao chép 1 dòng code nhúng FreeVTON Widget vào clipboard!');
       }).catch(() => {
         showToast(`Copy mã nhúng: ${snippet}`);
       });
@@ -949,7 +907,17 @@
   }
 
   function openStaticPhotoVton(product) {
-    openStudio(product || state.studio.product || PRODUCTS[0], 'photo');
+    const p = product || state.studio.product || PRODUCTS[0];
+    if (modal?.classList.contains('open')) {
+      closeStudio();
+    }
+    if (window.FreeVTONWidget) {
+      syncAnywearWidgetStatus();
+      window.FreeVTONWidget.open(toFreeVtonProduct(p), 'photo');
+      showToast(`🖼️ Đang mở Thử Đồ Ảnh Tĩnh AI Miễn Phí cho "${p?.title || p?.name || 'sản phẩm'}"!`);
+      return;
+    }
+    openStudio(p, 'photo');
   }
 
   function closeStudio() {
@@ -1065,9 +1033,9 @@
     }
   }
 
-  $('#tabModeLiveCamBtn')?.addEventListener('click', () => setStudioMode('live'));
-  $('#tabModeStaticPhotoBtn')?.addEventListener('click', () => setStudioMode('photo'));
-  $('#modeStaticPhotoBtn')?.addEventListener('click', () => setStudioMode('photo'));
+  $('#tabModeLiveCamBtn')?.addEventListener('click', () => triggerAnywearTryOn(state.studio.product || PRODUCTS[0]));
+  $('#tabModeStaticPhotoBtn')?.addEventListener('click', () => openStaticPhotoVton(state.studio.product || PRODUCTS[0]));
+  $('#modeStaticPhotoBtn')?.addEventListener('click', () => openStaticPhotoVton(state.studio.product || PRODUCTS[0]));
   $('#hubOpenPhotoVtonBtn')?.addEventListener('click', () => openStaticPhotoVton(state.studio.product || PRODUCTS[0]));
   $('#hubOpenStaticPhotoBtn')?.addEventListener('click', () => openStaticPhotoVton(state.studio.product || PRODUCTS[0]));
 
