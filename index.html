@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LALIN × STRESSMAMA × MINDE | Anywear: Live Virtual Fashion Atelier</title>
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,600&family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Syne:wght@600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <!-- Film Grain Texture Overlay (Stressmama Raw Visual Aesthetic) -->
+  <div class="film-grain" aria-hidden="true"></div>
+
+  <!-- Custom Magnetic Cursor -->
+  <div id="customCursor" class="custom-cursor">DRAG</div>
+
+  <!-- Top Scroll Progress Bar -->
+  <div id="scrollProgressBar" class="scroll-progress-bar"></div>
+
+  <!-- Sticky Header -->
+  <header class="site-header">
+    <div class="brand-cluster">
+      <a href="#" class="brand-logo">
+        <span class="brand-dot"></span>
+        ATELIER V.26
+      </a>
+      <div class="brand-dna-pills">
+        <span class="dna-pill" title="Thư viện BST di sản đương đại từ Lalin.vn">BST: LALIN.VN</span>
+        <span class="dna-pill highlight" title="Ngôn ngữ thị giác cá tính từ Stressmama.vn">VISUAL: STRESSMAMA.VN</span>
+        <span class="dna-pill" title="Hệ sinh thái Sản phẩm Thuê & Mua từ Minde.vn">PRODUCT: MINDE.VN</span>
+      </div>
+    </div>
+
+    <nav class="main-nav">
+      <a href="#lookbook-section">Thư Viện BST (Lalin)</a>
+      <a href="#visual-manifesto">Không Gian Thị Giác (Stressmama)</a>
+      <a href="#product-showroom">Tủ Đồ & Thuê Đồ (Minde)</a>
+      <a href="#anywear-guide">Công Nghệ Anywear</a>
+    </nav>
+
+    <div class="header-actions">
+      <button class="anywear-status-btn" id="openGlobalAnywearBtn">
+        <span class="pulse-dot"></span>
+        Anywear: Live Virtual
+      </button>
+      <button class="bag-btn" id="bagDrawerBtn">
+        <span>Tủ Thử & Giỏ</span>
+        <strong id="bagCountBadge">(0)</strong>
+      </button>
+    </div>
+  </header>
+
+  <!-- HERO SECTION -->
+  <section class="hero-section">
+    <div class="hero-bg-accent"></div>
+
+    <div class="hero-left">
+      <div class="editorial-kicker">
+        <span class="pulse-dot"></span>
+        INTERACTIVE FASHION ARCHIVE • ANYWEAR ENGINE 4.0
+      </div>
+
+      <h1 class="hero-title">
+        Di Sản <span class="italic-silk">Tơ Lụa</span> Giao Thoa
+        <span class="bold-street">THE BIG KIDS VISUAL</span>
+      </h1>
+
+      <p class="hero-subtitle">
+        Sự kết hợp độc bản giữa <strong>Thư viện Bộ Sưu Tập Áo Dài &amp; Tơ Tằm Lalin.vn</strong>, ngôn ngữ <strong>Thị Giác Đỏ Gai Góc &amp; Tự Do từ Stressmama.vn</strong>, cùng hệ sinh thái <strong>Đầm Dự Tiệc, Áo Dài &amp; Suitup Cho Thuê/May Đo Minde.vn</strong> — tích hợp trực tiếp công nghệ <strong>Anywear: Live Virtual</strong> trên từng khung hình sản phẩm.
+      </p>
+
+      <div class="hero-cta-row">
+        <a href="#product-showroom" class="btn-primary-red">
+          Khám Phá &amp; Thử Đồ Anywear Live
+          <span>→</span>
+        </a>
+        <a href="#lookbook-section" class="btn-secondary-outline">
+          Kéo Thả Thư Viện BST Lalin
+        </a>
+      </div>
+
+      <div class="ref-matrix">
+        <div class="ref-box">
+          <span class="ref-tag">01 / COLLECTION REF</span>
+          <h4>LALIN.VN ARCHIVE</h4>
+          <p>BST Hoan Lan, Áo dài tơ tằm đính kết thủ công, cổ yếm &amp; tứ thân đương đại.</p>
+        </div>
+        <div class="ref-box">
+          <span class="ref-tag">02 / VISUAL DIRECTION</span>
+          <h4>STRESSMAMA.VN</h4>
+          <p>Tinh thần "The Big Kids", tương phản Đỏ/Đen kiểu biệt thự nghệ thuật Thảo Điền &amp; chuyển động kéo trượt.</p>
+        </div>
+        <div class="ref-box">
+          <span class="ref-tag">03 / PRODUCT &amp; RENTAL</span>
+          <h4>MINDE.VN × ANYWEAR</h4>
+          <p>Thuê lẻ theo sự kiện hoặc mua/may đo đầm thiết kế, áo dài cưới, vest Suitup kèm thử đồ ảo trực tiếp.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- HERO RIGHT: Interactive Split-Wipe Anywear Live Stage -->
+    <div class="hero-stage-card" id="heroInteractiveStage" data-cursor="SCRUB AR">
+      <div class="hero-hud-top">
+        <div class="hud-badge">
+          <span class="pulse-dot"></span>
+          <span>ANYWEAR: LIVE VIRTUAL MIRROR</span>
+        </div>
+        <div class="hud-badge" id="heroAngleReadout">LIGHTING: GOLDEN SILK • FIT 98%</div>
+      </div>
+
+      <div class="hud-scanline"></div>
+
+      <div class="hero-stage-images" id="heroStageImages">
+        <!-- Base Layer: Editorial Look -->
+        <img
+          src="https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?auto=format&fit=crop&w=1200&q=85"
+          alt="Lalin x Stressmama Editorial Look"
+          class="hero-layer-base"
+        />
+        <!-- After Layer: Anywear Virtual Fit Simulation Layer -->
+        <img
+          src="https://images.unsplash.com/photo-1509631179647-0177331693ae?auto=format&fit=crop&w=1200&q=85"
+          alt="Anywear Live Virtual Fit Layer"
+          class="hero-layer-after"
+          id="heroAfterImage"
+        />
+        <div class="hero-split-slider" id="heroSplitBar">
+          <div class="hero-split-handle">⇄</div>
+        </div>
+      </div>
+
+      <div class="hero-hud-bottom">
+        <div class="hero-hud-info">
+          <h5 id="heroProductName">Lalin Áo Collection</h5>
+          <p>Kéo ngang trên ảnh để so sánh Góc Chụp Studio &amp; Mô Phỏng Anywear Live</p>
+        </div>
+        <button class="btn-anywear-card" id="heroLaunchTryOnBtn">
+          <span>✦</span> Mở Phòng Thử AR
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <!-- KINETIC MARQUEE (Stressmama Street Energy) -->
+  <div class="kinetic-marquee">
+    <div class="marquee-track">
+      <span>✦ LALIN HERITAGE LOOKBOOK ARCHIVE</span>
+      <span>✦ STRESSMAMA "THE BIG KIDS" VISUAL IDENTITY</span>
+      <span>✦ MINDE LUXURY RENT &amp; BESPOKE TAILORING</span>
+      <span>✦ ANYWEAR: LIVE VIRTUAL TRY-ON ON EVERY PRODUCT</span>
+      <span>✦ KÉO THẢ TRƯỢT MƯỢT MÀ • PARALLAX VELOCITY SKEW</span>
+      <span>✦ LALIN HERITAGE LOOKBOOK ARCHIVE</span>
+      <span>✦ STRESSMAMA "THE BIG KIDS" VISUAL IDENTITY</span>
+      <span>✦ MINDE LUXURY RENT &amp; BESPOKE TAILORING</span>
+      <span>✦ ANYWEAR: LIVE VIRTUAL TRY-ON ON EVERY PRODUCT</span>
+    </div>
+  </div>
+
+  <!-- SECTION 1: THƯ VIỆN BỘ SƯU TẬP (REF: LALIN.VN) - DRAG TO GLIDE PARALLAX -->
+  <section class="section-shell" id="lookbook-section">
+    <div class="section-header-bar">
+      <div>
+        <span class="section-eyebrow">01 / THƯ VIỆN BỘ SƯU TẬP — LALIN.VN/COLLECTIONS/AO-1</span>
+        <h2 class="section-heading">
+          Thư Viện Áo <em>Lalin</em> — Tơ, Yếm &amp; Gấm
+        </h2>
+      </div>
+
+      <div class="section-controls">
+        <div class="lookbook-drag-hint">
+          <span>↔</span> Giữ chuột kéo trượt ngang để cảm nhận hiệu ứng nghiêng 3D &amp; lật lớp ảnh
+        </div>
+        <div id="lookbookFilters" class="section-controls"></div>
+      </div>
+    </div>
+
+    <!-- Horizontal Drag-to-Scroll Viewport with Velocity Skew & Parallax -->
+    <div class="lookbook-viewport" id="lookbookViewport" data-cursor="DRAG ↔">
+      <div class="lookbook-track" id="lookbookTrack">
+        <!-- Rendered dynamically by app.js with dual-image peel & Anywear Live Virtual controls -->
+      </div>
+    </div>
+
+    <div class="lookbook-progress-track">
+      <div class="lookbook-progress-fill" id="lookbookProgressFill"></div>
+    </div>
+  </section>
+
+  <!-- SECTION 2: VISUAL MANIFESTO (REF: STRESSMAMA.VN) - INTERACTIVE MULTI-SCENE CURTAIN -->
+  <section class="visual-manifesto-section" id="visual-manifesto">
+    <div class="section-header-bar">
+      <div>
+        <span class="section-eyebrow">02 / NGÔN NGỮ THỊ GIÁC — REF: STRESSMAMA.VN</span>
+        <h2 class="section-heading">
+          "The Big Kids" trong <em>Biệt Thự Đỏ Thảo Điền</em>
+        </h2>
+      </div>
+      <p style="max-width: 440px; color: var(--text-muted); font-size: 14px;">
+        Lấy cảm hứng từ không gian trưng bày nghệ thuật đầy năng lượng của Stressmama: sự đối lập táo bạo giữa sắc đỏ rực, phom dáng oversized phóng khoáng và chất liệu truyền thống Việt Nam.
+      </p>
+    </div>
+
+    <div class="manifesto-grid">
+      <!-- Interactive Curtain Scrub Stage -->
+      <div class="manifesto-interactive-stage" id="manifestoStage" data-cursor="SLIDE SCENE">
+        <img
+          src="https://images.unsplash.com/photo-1539109136881-3be0616acf4b?auto=format&fit=crop&w=1200&q=85"
+          alt="Visual Scene 1"
+          class="manifesto-slide"
+          id="manifestoImgBase" loading="lazy"
+        />
+        <img
+          src="https://images.unsplash.com/photo-1490481651871-ab68de25d43d?auto=format&fit=crop&w=1200&q=85"
+          alt="Visual Scene 2"
+          class="manifesto-slide"
+          id="manifestoImgOverlay"
+          style="clip-path: inset(0 35% 0 0);"
+        />
+
+        <div class="anywear-card-overlay">
+          <span class="anywear-live-pill" id="manifestoTryOnTrigger">
+            <span class="pulse-dot"></span> ANYWEAR LIVE SCENE • CLICK ĐỂ THỬ SET ĐỒ NÀY
+          </span>
+          <span class="chapter-tag" id="manifestoPercentTag">WIPE: 65%</span>
+        </div>
+
+        <div class="manifesto-caption-overlay">
+          <div>
+            <span class="ref-tag" id="manifestoSceneCode">SCENE 01 // RED VILLA ARCHIVE</span>
+            <h4 id="manifestoSceneTitle" style="font-family: var(--font-serif); font-size: 22px;">
+              Striped Oversized Blazer × Áo Yếm Tơ Sống Lalin
+            </h4>
+          </div>
+          <span style="font-family: var(--font-mono); font-size: 11px; color: var(--accent-gold);">
+            Di chuột ngang để chuyển cảnh ⇄
+          </span>
+        </div>
+      </div>
+
+      <!-- Right Column: Visual Direction Controls -->
+      <div class="manifesto-right-column">
+        <div class="red-villa-card">
+          <span class="ref-tag" style="color: #ff8a92;">STRESSMAMA × LALIN × MINDE</span>
+          <h3>Chuyển Ảnh Đa Lớp Theo Cú Lướt Tay</h3>
+          <p>
+            Mỗi thao tác cuộn trang hoặc kéo chuột đều kích hoạt biến thiên vận tốc (Velocity Skew), tách lớp ánh sáng và mở khóa góc nhìn thực tế ảo <strong>Anywear: Live Virtual</strong>. Không còn những bức ảnh lookbook tĩnh nhàm chán.
+          </p>
+
+          <div class="scene-switcher-btns">
+            <button class="scene-btn active" data-scene="0">01. Red Villa</button>
+            <button class="scene-btn" data-scene="1">02. Street Heritage</button>
+            <button class="scene-btn" data-scene="2">03. Night Gala</button>
+          </div>
+        </div>
+
+        <div class="red-villa-card" style="background: rgba(255,255,255,0.03); border-color: var(--border-subtle);" id="anywear-guide">
+          <span class="ref-tag" style="color: var(--accent-jade);">CÔNG NGHỆ ANYWEAR: LIVE VIRTUAL TRÊN MỖI ẢNH</span>
+          <h3 style="font-size: 20px; margin-bottom: 10px;">3 Chế Độ Trực Quan Ngay Trên Từng Sản Phẩm</h3>
+          <ul style="list-style: none; display: flex; flex-direction: column; gap: 10px; font-size: 13px; color: var(--text-muted);">
+            <li><strong style="color: var(--text-light);">① Thanh trượt 360° &amp; Ánh sáng (Angle Scrubber):</strong> Kéo trực tiếp dưới mỗi ảnh sản phẩm để xoay góc nhìn trước/sau và đổi ánh sáng thực tế.</li>
+            <li><strong style="color: var(--text-light);">② Kính lúp X-Ray Chất liệu (Fabric Loupe):</strong> Bật nút <code>SOI VẢI</code> trên ảnh để phóng đại vân tơ tằm, ren đính kết, tweed hay dạ.</li>
+            <li><strong style="color: var(--text-light);">③ Phòng Thử AR Trực Tiếp (Live Virtual Try-On):</strong> Bật Camera trực tiếp hoặc căn chỉnh số đo Avatar 3D để xem độ vừa vặn chuẩn xác tới từng cm.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SECTION 3: TỦ ĐỒ SẢN PHẨM & DỊCH VỤ THUÊ/MUA (REF: MINDE.VN) -->
+  <section class="section-shell" id="product-showroom">
+    <div class="section-header-bar">
+      <div>
+        <span class="section-eyebrow">03 / SHOWROOM SẢN PHẨM — REF: MINDE.VN × ANYWEAR LIVE</span>
+        <h2 class="section-heading">
+          Trải Nghiệm <em>Anywear: Live Virtual</em> Trên Mọi Thiết Kế
+        </h2>
+      </div>
+
+      <div class="section-controls">
+        <!-- Rental vs Purchase Mode (Ref: Minde.vn Service Model) -->
+        <div class="pricing-mode-toggle" title="Chuyển đổi giữa chế độ Thuê Sự Kiện 3 Ngày (Minde.vn) và Mua Sở Hữu">
+          <button class="mode-pill active" data-price-mode="rent">Thuê Sự Kiện (Minde Rent)</button>
+          <button class="mode-pill" data-price-mode="buy">Mua Mới / May Đo</button>
+        </div>
+
+        <select class="sort-select" id="productSort" aria-label="Sắp xếp sản phẩm">
+          <option value="default">Mới nhất (Lalin)</option>
+          <option value="price-asc">Giá tăng dần</option>
+          <option value="price-desc">Giá giảm dần</option>
+        </select>
+      </div>
+    </div>
+
+    <div id="productFilters" class="section-controls" style="margin-bottom: 32px;"></div>
+
+    <!-- Product Grid where EVERY card has Anywear: Live Virtual interactive controls -->
+    <div class="product-grid" id="productGrid">
+      <!-- Populated by app.js from lalin-data.js -->
+    </div>
+
+    <div class="load-more-row">
+      <span id="productCountLabel" class="load-more-count"></span>
+      <button class="btn-secondary-outline" id="loadMoreBtn">Xem thêm sản phẩm</button>
+    </div>
+  </section>
+
+  <!-- ANYWEAR: LIVE VIRTUAL FITTING ROOM MODAL -->
+  <div class="anywear-modal-backdrop" id="anywearModal" aria-hidden="true">
+    <div class="anywear-studio-window" role="dialog" aria-labelledby="studioProductTitle">
+      <!-- Left: Interactive AR / Virtual Avatar Mirror -->
+      <div class="studio-viewport-panel">
+        <div class="studio-top-bar">
+          <div class="hud-badge">
+            <span class="pulse-dot"></span>
+            <span id="studioStatusLabel">ANYWEAR LIVE VIRTUAL • AVATAR TƯƠNG TÁC</span>
+          </div>
+          <div style="display: flex; gap: 8px;">
+            <button class="dock-mini-btn active" id="modeAvatarBtn">Người Mẫu Ảo</button>
+            <button class="dock-mini-btn tryon-trigger" id="modeWebcamBtn">📷 Bật Camera AR Thật</button>
+          </div>
+        </div>
+
+        <div class="studio-visual-stage" id="studioVisualStage">
+          <img
+            src="https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?auto=format&fit=crop&w=1000&q=85"
+            alt="Anywear Virtual Model"
+            class="studio-model-img"
+            id="studioMainImage"
+          />
+          <video id="studioWebcamVideo" class="studio-webcam-video" autoplay playsinline muted></video>
+
+          <!-- Floating AR Garment Overlay when Webcam or Overlay Mode is active -->
+          <div class="ar-garment-projection" id="arGarmentProjection">
+            <img src="" alt="Garment AR Projection" id="arGarmentImg" />
+          </div>
+
+          <!-- Smart Body Landmark Guides -->
+          <div class="ar-body-guides" id="arBodyGuides">
+            <span class="ar-guide-point shoulder-l" title="Điểm khớp vai trái"></span>
+            <span class="ar-guide-point shoulder-r" title="Điểm khớp vai phải"></span>
+            <span class="ar-guide-point waist-l" title="Điểm chiết eo trái"></span>
+            <span class="ar-guide-point waist-r" title="Điểm chiết eo phải"></span>
+            <span class="ar-guide-point hem-b" title="Chiều dài tà"></span>
+          </div>
+        </div>
+
+        <div class="studio-bottom-bar">
+          <div style="font-family: var(--font-mono); font-size: 11px; color: var(--accent-jade);" id="studioTelemetryText">
+            AI DRAPE SIMULATION: LỤA TƠ TẰM 100% • ĐỘ RỦ TỰ NHIÊN 96%
+          </div>
+          <div style="display: flex; gap: 8px;">
+            <button class="dock-mini-btn" id="studioFlipAngleBtn">⇄ Đổi Góc Nhìn Trước/Sau</button>
+            <button class="dock-mini-btn" id="studioToggleMeshBtn">📐 Ẩn/Hiện Lưới 3D</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right: Customization, Body Measurements & Minde Rent / Buy Booking -->
+      <div class="studio-controls-panel">
+        <div class="studio-header-row">
+          <div>
+            <span class="ref-tag" id="studioProductCategory">LALIN × MINDE EXCLUSIVE</span>
+            <h3 id="studioProductTitle" style="font-family: var(--font-serif); font-size: 28px;">
+              Áo Dài Tơ Tằm Hoan Lan Đính Kết
+            </h3>
+          </div>
+          <button class="close-studio-btn" id="closeAnywearModalBtn" title="Đóng">✕</button>
+        </div>
+
+        <!-- Fit Score Banner -->
+        <div class="fit-score-banner">
+          <div>
+            <div style="font-family: var(--font-mono); font-size: 10px; color: var(--text-muted); text-transform: uppercase;">
+              ĐỘ TƯƠNG THÍCH SỐ ĐO (ANYWEAR AI FIT)
+            </div>
+            <div style="font-size: 13px; margin-top: 2px;" id="studioRecommendedSize">
+              Khuyên dùng: <strong>Size S (May đo chuẩn Lalin/Minde)</strong>
+            </div>
+          </div>
+          <div class="fit-score-number" id="studioFitPercent">98%</div>
+        </div>
+
+        <!-- Body Measurement Sliders -->
+        <div class="control-group">
+          <div class="control-group-title">
+            <span>01. SỐ ĐO CƠ THỂ CỦA BẠN</span>
+            <span id="bodySummaryLabel" style="color: var(--accent-jade);">163cm • 50kg • Eo 64cm</span>
+          </div>
+
+          <div class="slider-row">
+            <div class="slider-label-line">
+              <span>Chiều cao</span>
+              <strong id="valHeight">163 cm</strong>
+            </div>
+            <input type="range" id="inputHeight" min="148" max="185" value="163" />
+          </div>
+
+          <div class="slider-row">
+            <div class="slider-label-line">
+              <span>Cân nặng</span>
+              <strong id="valWeight">50 kg</strong>
+            </div>
+            <input type="range" id="inputWeight" min="40" max="85" value="50" />
+          </div>
+
+          <div class="slider-row">
+            <div class="slider-label-line">
+              <span>Vòng eo</span>
+              <strong id="valWaist">64 cm</strong>
+            </div>
+            <input type="range" id="inputWaist" min="56" max="88" value="64" />
+          </div>
+        </div>
+
+        <!-- Size & Color Picker (from Lalin variants) -->
+        <div class="control-group">
+          <div class="control-group-title">
+            <span>CHỌN SIZE &amp; MÀU</span>
+            <a id="studioLalinLink" href="https://lalin.vn" target="_blank" rel="noopener" style="color: var(--accent-jade); text-decoration: none;">Xem trên Lalin.vn ↗</a>
+          </div>
+          <div class="option-chips" id="studioSizeChips"></div>
+          <div class="option-chips" id="studioColorChips" style="margin-top: 8px;"></div>
+          <div class="studio-thumbs" id="studioThumbs"></div>
+        </div>
+
+        <!-- Environment & Lighting Simulator -->
+        <div class="control-group">
+          <div class="control-group-title">
+            <span>02. BỐI CẢNH ÁNH SÁNG THỰC TẾ</span>
+            <span id="lightingModeLabel">Nắng Sớm Hà Nội</span>
+          </div>
+          <div class="scene-switcher-btns">
+            <button class="scene-btn active" data-light="daylight">Nắng Sớm (Lalin)</button>
+            <button class="scene-btn" data-light="redvilla">Biệt Thự Đỏ (Stressmama)</button>
+            <button class="scene-btn" data-light="gala">Dạ Tiệc Đêm (Minde)</button>
+          </div>
+        </div>
+
+        <!-- Minde Rental vs Purchase Action Box -->
+        <div class="control-group" style="border-color: rgba(201, 169, 110, 0.4);">
+          <div class="control-group-title">
+            <span>03. ĐẶT THUÊ SỰ KIỆN HOẶC MUA SỞ HỮU (MINDE.VN)</span>
+          </div>
+          <div class="price-matrix-box" style="margin-bottom: 14px;">
+            <div class="price-col highlighted">
+              <span class="price-label">Giá Thuê 3 Ngày (Minde)</span>
+              <span class="price-val rent-color" id="studioRentPrice">650.000₫</span>
+            </div>
+            <div class="price-col">
+              <span class="price-label">Giá Mua Sở Hữu / May Đo</span>
+              <span class="price-val" id="studioBuyPrice">3.450.000₫</span>
+            </div>
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+            <button class="btn-primary-red" id="studioConfirmRentBtn" style="justify-content: center; padding: 13px;">
+              Thuê Ngay (Minde)
+            </button>
+            <button class="btn-secondary-outline" id="studioConfirmBuyBtn" style="justify-content: center; padding: 13px;">
+              Mua / Đặt May Riêng
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bag Drawer -->
+  <div class="bag-drawer-backdrop" id="bagDrawer" aria-hidden="true">
+    <aside class="bag-drawer" role="dialog" aria-label="Tủ thử và giỏ hàng">
+      <div class="bag-drawer-head">
+        <h3 style="font-family: var(--font-serif); font-size: 26px;">Tủ Thử &amp; Giỏ</h3>
+        <button class="close-studio-btn" id="closeBagBtn" title="Đóng">✕</button>
+      </div>
+      <div class="bag-items" id="bagItems"></div>
+      <div class="bag-drawer-foot">
+        <div class="bag-total-row"><span>Tạm tính</span><strong id="bagTotal">0₫</strong></div>
+        <button class="btn-primary-red" id="checkoutBtn" style="width: 100%; justify-content: center;">Tiến hành đặt hàng</button>
+      </div>
+    </aside>
+  </div>
+
+  <!-- Toast Notification -->
+  <div class="toast-notification" id="toastNotification"></div>
+
+  <!-- FOOTER -->
+  <footer class="site-footer">
+    <div class="footer-grid">
+      <div class="footer-col">
+        <a href="#" class="brand-logo" style="margin-bottom: 12px;">
+          <span class="brand-dot"></span> ATELIER V.26
+        </a>
+        <p style="color: var(--text-muted); font-size: 13px; max-width: 340px;">
+          Nền tảng thời trang tương tác kết hợp tinh hoa BST thiết kế <strong>Lalin.vn</strong>, cá tính thị giác <strong>Stressmama.vn</strong> và dịch vụ thuê/mua đồ hiệu <strong>Minde.vn</strong> cùng công nghệ thử đồ thực tế ảo <strong>Anywear: Live Virtual</strong>.
+        </p>
+      </div>
+      <div class="footer-col">
+        <h4>Cảm Hứng Bộ Sưu Tập (Lalin)</h4>
+        <ul>
+          <li><a href="#lookbook-section">BST Áo Dài Hoan Lan</a></li>
+          <li><a href="#lookbook-section">Áo Yếm Tơ Tằm &amp; Tứ Thân</a></li>
+          <li><a href="#lookbook-section">Áo Dài Cưới Thủ Công</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h4>Không Gian Thị Giác (Stressmama)</h4>
+        <ul>
+          <li><a href="#visual-manifesto">The Big Kids Visual</a></li>
+          <li><a href="#visual-manifesto">Biệt Thự Đỏ Thảo Điền</a></li>
+          <li><a href="#visual-manifesto">Streetwear × Tailored Edge</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h4>Hệ Sinh Thái Sản Phẩm (Minde)</h4>
+        <ul>
+          <li><a href="#product-showroom">Thuê Đầm Thiết Kế Dự Tiệc</a></li>
+          <li><a href="#product-showroom">Thuê &amp; May Đo Áo Dài Cưới</a></li>
+          <li><a href="#product-showroom">Suitup By Minde (Vest Nam/Unisex)</a></li>
+        </ul>
+      </div>
+    </div>
+    <div style="border-top: 1px solid var(--border-subtle); padding-top: 24px; display: flex; justify-content: space-between; font-family: var(--font-mono); font-size: 11px; color: var(--text-muted);">
+      <span>© 2026 ATELIER INTERACTIVE • POWERED BY ANYWEAR: LIVE VIRTUAL ENGINE</span>
+      <span>REF: LALIN.VN × STRESSMAMA.VN × MINDE.VN</span>
+    </div>
+  </footer>
+
+  <script src="lalin-data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
