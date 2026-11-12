@@ -3300,13 +3300,239 @@ body.modal-open { overflow: hidden; }
   display: block;
 }
 
-.aw-saved-look-meta {
-  padding: 4px 6px;
-  font-family: var(--font-mono);
-  font-size: 9px;
+/* ==========================================================================
+   v4 — USER-PERSPECTIVE UI/UX & MOBILE RESPONSIVE AUDIT FIXES
+   ========================================================================== */
+
+/* 1. Hide static cyan body guide rectangle unless AI Mesh Debug is toggled */
+.ar-body-guides {
+  display: none !important;
+}
+.studio-visual-stage.mesh-debug-on .ar-body-guides {
+  display: block !important;
+}
+
+/* 2. Prevent "Giữ để xem cơ thể gốc" button (#studioHoldSelfBtn) from overlapping bottom controls */
+.aw-hold-self-btn {
+  top: 86px !important;
+  right: 16px !important;
+  bottom: auto !important;
+  left: auto !important;
+  transform: none !important;
+  z-index: 15 !important;
+  padding: 6px 12px !important;
+  font-size: 10.5px !important;
+  background: rgba(10, 12, 16, 0.85) !important;
+  border: 1px solid rgba(200, 255, 46, 0.45) !important;
+  color: #e4f8b6 !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+
+/* 3. Ensure #aiPoseHudPill never overlaps .studio-top-bar or #studioHoldSelfBtn */
+.studio-top-bar {
+  z-index: 16 !important;
+  padding: 12px 16px !important;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ai-pose-hud-pill {
+  top: 86px !important;
+  left: 16px !important;
+  max-width: calc(100% - 210px);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  z-index: 14 !important;
 }
+
+/* 4. Tame external Decart Anywear widget (.vton-btn & floating bar) so it never covers buttons or modal */
+.hero-stage-card .vton-btn,
+.studio-visual-stage .vton-btn,
+.manifesto-interactive-stage .vton-btn {
+  display: none !important;
+}
+
+.product-media .vton-btn,
+.lookbook-media-wrap .vton-btn {
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  pointer-events: none;
+}
+
+#__decart-tryon-widget:not(:has(iframe)),
+#__decart-imgbtn,
+.vton-btn {
+  display: none !important;
+}
+
+body.modal-open #__decart-tryon-widget {
+  display: none !important;
+}
+
+/* 5. Skin Palette Swatch & Saved Lookbook Card styling alignment */
+.aw-Swatch-chip,
+.aw-swatch-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px 4px 6px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  font-size: 11px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-light);
+}
+
+.aw-Swatch-chip.is-avoid,
+.aw-swatch-chip.avoid {
+  opacity: 0.62;
+  border-style: dashed;
+  border-color: rgba(255, 110, 110, 0.4);
+  text-decoration: line-through;
+}
+
+.aw-saved-look-card {
+  position: relative;
+  flex: 0 0 84px;
+  height: 104px;
+  border-radius: 10px;
+  border: 1px solid var(--border-subtle);
+  background: rgba(255, 255, 255, 0.03);
+  overflow: hidden;
+  cursor: pointer;
+  transition: border-color 0.2s, transform 0.2s;
+}
+
+.aw-saved-look-card img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top;
+  display: block;
+}
+
+.aw-saved-look-score {
+  position: absolute;
+  bottom: 5px;
+  left: 5px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: rgba(10, 12, 16, 0.85);
+  border: 1px solid rgba(200, 255, 46, 0.5);
+  color: #c8ff2e;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 700;
+}
+
+.aw-saved-look-del {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(10, 12, 16, 0.78);
+  color: #fff;
+  font-size: 10px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.75;
+}
+
+.aw-saved-look-del:hover {
+  opacity: 1;
+  background: var(--accent-red);
+}
+
+/* 6. Mobile Header & Studio Responsive Polish (320px - 768px) */
+@media (max-width: 768px) {
+  .hero-section,
+  .anywear-hub-section,
+  .section-shell,
+  .visual-manifesto-section {
+    overflow-x: clip;
+  }
+  .site-header {
+    padding: 10px 10px !important;
+    gap: 4px;
+  }
+  .brand-logo {
+    font-size: 12px !important;
+    gap: 4px;
+  }
+  .brand-dot {
+    width: 6px;
+    height: 6px;
+  }
+  .header-actions {
+    gap: 5px !important;
+  }
+  .anywear-status-btn {
+    padding: 5px 8px !important;
+    font-size: 8.5px !important;
+    gap: 4px !important;
+    letter-spacing: 0.02em !important;
+  }
+  .bag-btn {
+    padding: 5px 8px !important;
+    font-size: 9.5px !important;
+    gap: 3px !important;
+  }
+  .bag-btn span {
+    display: none;
+  }
+  .bag-btn::before {
+    content: '🛍 ';
+  }
+
+  /* Studio Modal on Mobile */
+  .anywear-studio-window {
+    display: flex !important;
+    flex-direction: column !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    overflow-y: auto !important;
+  }
+  .studio-viewport-panel {
+    flex: 0 0 auto !important;
+    height: 520px !important;
+    min-height: 520px !important;
+  }
+  .studio-controls-panel {
+    flex: 0 0 auto !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow-y: visible !important;
+    padding: 20px 16px 36px !important;
+  }
+  .ai-pose-hud-pill {
+    top: 86px !important;
+    left: 10px !important;
+    right: 10px !important;
+    max-width: calc(100% - 20px) !important;
+    font-size: 9px !important;
+  }
+  .aw-hold-self-btn {
+    top: 118px !important;
+    right: 10px !important;
+    font-size: 9.5px !important;
+    padding: 5px 10px !important;
+  }
+  .studio-bottom-bar {
+    padding: 8px 10px !important;
+    gap: 6px !important;
+  }
+  .aw-cam-controls .dock-mini-btn,
+  .btn-aw-camera-start {
+    padding: 5px 8px !important;
+    font-size: 9.5px !important;
+  }
+}
+
 
 

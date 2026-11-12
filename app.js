@@ -722,12 +722,54 @@
     const uvRig = {
       uMin: isHalter ? 0.21 : 0.14,
       uMax: isHalter ? 0.79 : 0.86,
-      vNeck: 0.235,
-      vShoulder: 0.265,
-      vBust: 0.42,
-      vWaist: 0.62,
+      vNeck: 0.275,
+      vShoulder: 0.295,
+      vBust: 0.44,
+      vWaist: 0.64,
       vHem: 0.89
     };
+
+    // CORS-Safe Vector & Gradient Silhouette Cutout on `clothCanvas`
+    // (Works 100% even when CDN images do not send Access-Control-Allow-Origin!)
+    ctx.save();
+    ctx.globalCompositeOperation = 'destination-out';
+
+    // A) Erase model's head, face, hair & upper neck above collar line (y = 0 .. 0.285*h)
+    const headGrad = ctx.createLinearGradient(0, h * 0.24, 0, h * 0.305);
+    headGrad.addColorStop(0, 'rgba(0,0,0,1)');
+    headGrad.addColorStop(0.65, 'rgba(0,0,0,0.92)');
+    headGrad.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = headGrad;
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(w, 0);
+    ctx.lineTo(w, h * (isHalter ? 0.32 : 0.29));
+    ctx.quadraticCurveTo(w * 0.5, h * 0.315, 0, h * (isHalter ? 0.32 : 0.29));
+    ctx.closePath();
+    ctx.fill();
+
+    // B) Erase left & right studio background outside garment silhouette
+    const leftEdge = w * (isHalter ? 0.20 : 0.12);
+    const rightEdge = w * (isHalter ? 0.80 : 0.88);
+    const leftGrad = ctx.createLinearGradient(leftEdge - w * 0.04, 0, leftEdge + w * 0.05, 0);
+    leftGrad.addColorStop(0, 'rgba(0,0,0,1)');
+    leftGrad.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = leftGrad;
+    ctx.fillRect(0, 0, leftEdge + w * 0.05, h);
+
+    const rightGrad = ctx.createLinearGradient(rightEdge - w * 0.05, 0, rightEdge + w * 0.04, 0);
+    rightGrad.addColorStop(0, 'rgba(0,0,0,0)');
+    rightGrad.addColorStop(1, 'rgba(0,0,0,1)');
+    ctx.fillStyle = rightGrad;
+    ctx.fillRect(rightEdge - w * 0.05, 0, w - (rightEdge - w * 0.05), h);
+
+    // C) Feather bottom hem (y = 0.88*h .. h)
+    const hemGrad = ctx.createLinearGradient(0, h * 0.87, 0, h * 0.96);
+    hemGrad.addColorStop(0, 'rgba(0,0,0,0)');
+    hemGrad.addColorStop(1, 'rgba(0,0,0,1)');
+    ctx.fillStyle = hemGrad;
+    ctx.fillRect(0, h * 0.87, w, h * 0.13);
+    ctx.restore();
 
     try {
       const imgData = ctx.getImageData(0, 0, w, h);
@@ -1199,15 +1241,19 @@
     const e = x0 - a * u0 - c * v0;
     const f = y0 - b * u0 - d * v0;
 
-    // Slightly expand clip triangle by 0.45px from centroid to eliminate subpixel hairline seams
+    // Expand clip triangle radially from centroid by 0.85px so adjacent triangles have zero dark hairline seams
     const cx = (x0 + x1 + x2) / 3;
     const cy = (y0 + y1 + y2) / 3;
-    const ex0 = x0 + (x0 > cx ? 0.45 : -0.45);
-    const ey0 = y0 + (y0 > cy ? 0.45 : -0.45);
-    const ex1 = x1 + (x1 > cx ? 0.45 : -0.45);
-    const ey1 = y1 + (y1 > cy ? 0.45 : -0.45);
-    const ex2 = x2 + (x2 > cx ? 0.45 : -0.45);
-    const ey2 = y2 + (y2 > cy ? 0.45 : -0.45);
+    const d0 = Math.hypot(x0 - cx, y0 - cy) || 1;
+    const d1 = Math.hypot(x1 - cx, y1 - cy) || 1;
+    const d2 = Math.hypot(x2 - cx, y2 - cy) || 1;
+    const pad = 0.85;
+    const ex0 = x0 + ((x0 - cx) / d0) * pad;
+    const ey0 = y0 + ((y0 - cy) / d0) * pad;
+    const ex1 = x1 + ((x1 - cx) / d1) * pad;
+    const ey1 = y1 + ((y1 - cy) / d1) * pad;
+    const ex2 = x2 + ((x2 - cx) / d2) * pad;
+    const ey2 = y2 + ((y2 - cy) / d2) * pad;
 
     ctx.save();
     ctx.beginPath();
@@ -1480,8 +1526,10 @@
   }
 
   /**
-   * Renders the Moving Human Body Base + Warped Garment Mesh when in "AI Body-Fit Live" mode
+   * Renders the Unified Continuous 96-Triangle Biomechanical Mesh when in "AI Body-Fit Live" mode
    * (either inside the Studio Modal or inside an Inline Product Card).
+   * Deforms shoulders, bust, sleeves, waist, and silk hem directly on the continuous image mesh
+   * so there is ZERO double-head ghosting and ZERO blur seam!
    */
   function renderSimulatedBodyFitFrame(ctx, cw, ch, asset, skel, opts = {}) {
     if (!asset || !asset.rawImg) return;
@@ -1496,59 +1544,195 @@
     const dx = (cw - dw) / 2;
     const dy = (ch - dh) / 2;
 
-    // 1. Draw moving background/body base with subtle kinematic breathing & sway
-    const bodySwayX = (skel.neck.x - 0.5) * cw * 0.55;
-    const bodyBreathY = (skel.neck.y - 0.236) * ch * 0.45;
-
-    ctx.save();
-    ctx.translate(cw * 0.5 + bodySwayX, ch * 0.5 + bodyBreathY);
-    ctx.rotate((skel.tilt || 0) * 0.38);
-    ctx.scale(1 + Math.abs(skel.yaw || 0) * 0.03, 1 + (skel.breathe || 0) * 0.012);
-    ctx.translate(-cw * 0.5, -ch * 0.5);
+    // Always draw base image underneath first so subpixel anti-aliased triangle boundaries never bleed dark canvas background!
     ctx.drawImage(img, dx, dy, dw, dh);
-    ctx.restore();
+    if ((state.studio.holdOriginal && !opts.ignoreHold) || opts.forceOriginal) {
+      return;
+    }
 
-    if (state.studio.holdOriginal && !opts.ignoreHold) return;
+    const ROWS = 8;
+    const COLS = 6;
+    const waistScale = 1 + (Number(inputWaist?.value || 64) - 64) * 0.0055;
+    const heightScale = 1 + (Number(inputHeight?.value || 163) - 163) * 0.0018;
+    const manualScale = opts.ignoreManual ? 1.0 : poseState.manualScale;
+    const manualOffX = opts.ignoreManual ? 0 : poseState.manualX * (cw / 500);
+    const manualOffY = opts.ignoreManual ? 0 : poseState.manualY * (ch / 500);
 
-    // 2. Softly attenuate static torso region so the 96-triangle warped garment mesh dominates cleanly
-    ctx.save();
-    ctx.beginPath();
-    ctx.ellipse(
-      cw * skel.neck.x,
-      ch * 0.54,
-      cw * 0.25,
-      ch * 0.29,
-      skel.tilt || 0,
-      0,
-      Math.PI * 2
-    );
-    ctx.clip();
-    ctx.filter = 'blur(8px) brightness(0.92)';
-    ctx.globalAlpha = 0.72;
-    ctx.drawImage(img, dx, dy, dw, dh);
-    ctx.restore();
+    // Kinematic deltas relative to neutral rest pose
+    const swayX = (skel.neck.x - 0.5) * cw * 1.15;
+    const breathY = (skel.neck.y - 0.268) * ch * 1.1;
+    const yaw = skel.yaw || 0;
+    const tilt = skel.tilt || 0;
+    const breathe = skel.breathe || Math.sin(performance.now() * 0.0026);
 
-    // 3. Warp the 96-triangle extracted garment mesh tightly onto the moving skeleton
-    renderWarpedGarmentOnSkeleton(ctx, cw, ch, asset, skel, opts);
+    const grid = [];
+    for (let r = 0; r <= ROWS; r++) {
+      const vNorm = r / ROWS; // 0 = top border, 1 = bottom border
+      const row = [];
 
-    // 4. Composite the model's real head/chin/hair cleanly above the collar line so head rotates naturally
-    ctx.save();
-    ctx.beginPath();
-    ctx.ellipse(
-      cw * skel.neck.x,
-      ch * 0.115 + bodyBreathY,
-      cw * 0.22,
-      ch * 0.125,
-      (skel.tilt || 0) * 0.5,
-      0,
-      Math.PI * 2
-    );
-    ctx.clip();
-    ctx.translate(cw * 0.5 + bodySwayX * 1.05, ch * 0.12 + bodyBreathY);
-    ctx.rotate((skel.tilt || 0) * 0.55);
-    ctx.translate(-cw * 0.5, -ch * 0.12);
-    ctx.drawImage(img, dx, dy, dw, dh);
-    ctx.restore();
+      // Source image coordinate (maps 1:1 with object-fit: cover rectangle)
+      const uMinSrc = (0 - dx) / scale;
+      const uMaxSrc = (cw - dx) / scale;
+      const vSrc = (vNorm * ch - dy) / scale;
+
+      // Vertical envelope: 0 at outer top/bottom edges, peaks across collar/shoulders/bust/waist/hem
+      const isBorderRow = (r === 0 || r === ROWS);
+      const bodyInfluenceV = isBorderRow ? 0 : Math.pow(Math.sin(vNorm * Math.PI), 0.75);
+      // Garment torso zone (vNorm in 0.24 .. 0.90) receives stronger cloth articulation
+      const garmentZoneV = (vNorm >= 0.22 && vNorm <= 0.92)
+        ? Math.sin(((vNorm - 0.22) / 0.70) * Math.PI)
+        : 0;
+
+      for (let c = 0; c <= COLS; c++) {
+        const uNorm = c / COLS;
+        const signedU = (uNorm - 0.5) * 2; // -1 .. +1
+        const uSrc = lerp(uMinSrc, uMaxSrc, uNorm);
+
+        const isBorderCol = (c === 0 || c === COLS);
+        const env = (isBorderRow || isBorderCol) ? 0 : bodyInfluenceV * Math.sin(uNorm * Math.PI);
+        const clothEnv = (isBorderRow || isBorderCol) ? 0 : garmentZoneV * Math.sin(uNorm * Math.PI);
+
+        let vx = uNorm * cw;
+        let vy = vNorm * ch;
+
+        if (env > 0) {
+          // 1. Natural kinematic body sway, breathing chest lift & shoulder tilt
+          vx += (swayX + manualOffX) * env;
+          vy += (breathY + manualOffY) * env;
+
+          // 2. Shoulder & Torso Tilt around chest center (0.5, 0.38)
+          const relX = vx - cw * 0.5;
+          const relY = vy - ch * 0.38;
+          const effTilt = tilt * 0.65 * env;
+          const cosT = Math.cos(effTilt);
+          const sinT = Math.sin(effTilt);
+          vx = cw * 0.5 + (relX * cosT - relY * sinT);
+          vy = ch * 0.38 + (relX * sinT + relY * cosT);
+
+          // 3. 3D Yaw Perspective & Ribcage Expansion on Garment Torso
+          const bustBreath = (vNorm > 0.24 && vNorm < 0.56) ? (1 + breathe * 0.025) : 1.0;
+          const waistFit = (vNorm >= 0.48 && vNorm <= 0.75) ? waistScale : 1.0;
+          const yawTurnShift = yaw * cw * 0.065 * clothEnv;
+          const yawForeshorten = 1 + signedU * yaw * 0.18 * clothEnv;
+
+          vx = cw * 0.5 + (vx - cw * 0.5) * yawForeshorten * bustBreath * waistFit * manualScale + yawTurnShift;
+          vy = ch * 0.38 + (vy - ch * 0.38) * heightScale * manualScale;
+
+          // 4. Flowing Silk Hem Ripple on lower garment rows (r = 5, 6, 7)
+          if (vNorm > 0.58 && vNorm < 0.95) {
+            const wave = Math.sin(performance.now() * 0.0032 + c * 1.15) * (cw * 0.009) * clothEnv;
+            vx += wave;
+          }
+        }
+
+        row.push({ u: uSrc, v: vSrc, x: vx, y: vy });
+      }
+      grid.push(row);
+    }
+
+    // 1. Render all 96 triangles seamlessly
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        const p00 = grid[r][c];
+        const p10 = grid[r][c + 1];
+        const p01 = grid[r + 1][c];
+        const p11 = grid[r + 1][c + 1];
+
+        drawTexturedTriangle(
+          ctx, img,
+          p00.u, p00.v, p10.u, p10.v, p01.u, p01.v,
+          p00.x, p00.y, p10.x, p10.y, p01.x, p01.y
+        );
+        drawTexturedTriangle(
+          ctx, img,
+          p10.u, p10.v, p11.u, p11.v, p01.u, p01.v,
+          p10.x, p10.y, p11.x, p11.y, p01.x, p01.y
+        );
+      }
+    }
+
+    // 2. Dynamic 3D Silk Sheen & Torso Fold Shading as body rotates
+    if (Math.abs(yaw) > 0.015) {
+      ctx.save();
+      const grad = ctx.createLinearGradient(cw * 0.22, ch * 0.25, cw * 0.78, ch * 0.75);
+      const highlightAlpha = Math.min(0.14, Math.abs(yaw) * 0.28).toFixed(3);
+      const shadowAlpha = Math.min(0.16, Math.abs(yaw) * 0.32).toFixed(3);
+      if (yaw > 0) {
+        grad.addColorStop(0, `rgba(255, 248, 225, ${highlightAlpha})`);
+        grad.addColorStop(0.5, 'rgba(255, 255, 255, 0)');
+        grad.addColorStop(1, `rgba(0, 0, 0, ${shadowAlpha})`);
+      } else {
+        grad.addColorStop(0, `rgba(0, 0, 0, ${shadowAlpha})`);
+        grad.addColorStop(0.5, 'rgba(255, 255, 255, 0)');
+        grad.addColorStop(1, `rgba(255, 248, 225, ${highlightAlpha})`);
+      }
+      ctx.fillStyle = grad;
+      ctx.globalCompositeOperation = 'soft-light';
+      ctx.fillRect(cw * 0.15, ch * 0.22, cw * 0.70, ch * 0.68);
+      ctx.restore();
+    }
+
+    // 3. Optional AI Skeleton & 96-Triangle Garment Mesh Wireframe ("🦴 Lưới AI")
+    if (state.studio.showMeshDebug || opts.showWireframe) {
+      ctx.save();
+      ctx.strokeStyle = 'rgba(200, 255, 46, 0.42)';
+      ctx.lineWidth = 1;
+      for (let r = 2; r < ROWS - 1; r++) {
+        for (let c = 1; c < COLS - 1; c++) {
+          const p00 = grid[r][c];
+          const p10 = grid[r][c + 1];
+          const p01 = grid[r + 1][c];
+          const p11 = grid[r + 1][c + 1];
+          ctx.beginPath();
+          ctx.moveTo(p00.x, p00.y);
+          ctx.lineTo(p10.x, p10.y);
+          ctx.lineTo(p01.x, p01.y);
+          ctx.closePath();
+          ctx.stroke();
+
+          ctx.beginPath();
+          ctx.moveTo(p10.x, p10.y);
+          ctx.lineTo(p11.x, p11.y);
+          ctx.lineTo(p01.x, p01.y);
+          ctx.closePath();
+          ctx.stroke();
+        }
+      }
+
+      // Draw key skeleton joints over the garment
+      const jLShoulder = grid[2][2];
+      const jRShoulder = grid[2][4];
+      const jLElbow = grid[4][1];
+      const jRElbow = grid[4][5];
+      const jLHip = grid[5][2];
+      const jRHip = grid[5][4];
+      const jNeck = grid[2][3];
+      const jWaist = grid[5][3];
+
+      ctx.strokeStyle = '#2dd4bf';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(jLElbow.x, jLElbow.y);
+      ctx.lineTo(jLShoulder.x, jLShoulder.y);
+      ctx.lineTo(jRShoulder.x, jRShoulder.y);
+      ctx.lineTo(jRElbow.x, jRElbow.y);
+      ctx.moveTo(jNeck.x, jNeck.y);
+      ctx.lineTo(jWaist.x, jWaist.y);
+      ctx.moveTo(jLHip.x, jLHip.y);
+      ctx.lineTo(jRHip.x, jRHip.y);
+      ctx.stroke();
+
+      [jLShoulder, jRShoulder, jLElbow, jRElbow, jLHip, jRHip, jNeck, jWaist].forEach((pt) => {
+        ctx.beginPath();
+        ctx.arc(pt.x, pt.y, 4, 0, Math.PI * 2);
+        ctx.fillStyle = '#c8ff2e';
+        ctx.fill();
+        ctx.strokeStyle = '#0b0c0e';
+        ctx.lineWidth = 1.4;
+        ctx.stroke();
+      });
+      ctx.restore();
+    }
   }
 
   // ==========================================================================
@@ -2277,6 +2461,7 @@
   $('#studioMeshDebugBtn')?.addEventListener('click', (e) => {
     state.studio.showMeshDebug = !state.studio.showMeshDebug;
     e.currentTarget.classList.toggle('active', state.studio.showMeshDebug);
+    stage?.classList.toggle('mesh-debug-on', state.studio.showMeshDebug);
     showToast(state.studio.showMeshDebug
       ? 'Đang hiển thị Khung xương AI 33 điểm & Lưới biến dạng vải 96 tam giác!'
       : 'Đã ẩn lưới khung xương AI.');
@@ -2671,7 +2856,24 @@
    * to deterministic client-side AI computation on static hosts (GitHub Pages).
    */
   const anywearApi = {
+    backendState: /\.github\.io$/i.test(window.location.hostname) ? 'offline' : 'unknown',
+
     async callJson(path, body = null) {
+      if (this.backendState === 'offline') {
+        throw new Error('Static host mode');
+      }
+      if (this.backendState === 'unknown') {
+        try {
+          const probe = await fetch('/api/health', { method: 'GET' });
+          const ct = probe.headers.get('content-type') || '';
+          this.backendState = (probe.ok && ct.includes('application/json')) ? 'online' : 'offline';
+        } catch (_) {
+          this.backendState = 'offline';
+        }
+        if (this.backendState === 'offline') {
+          throw new Error('Static host mode');
+        }
+      }
       const res = await fetch(path, {
         method: body ? 'POST' : 'GET',
         headers: body ? { 'Content-Type': 'application/json' } : undefined,
@@ -2866,19 +3068,20 @@
       state.studio.beforeAfterRatio = ratio;
       if (baLine) baLine.style.left = `${(ratio * 100).toFixed(1)}%`;
     };
-    baLine?.addEventListener('pointerdown', (e) => {
+    baBar.addEventListener('pointerdown', (e) => {
       e.stopPropagation();
       draggingBa = true;
-      baLine.setPointerCapture(e.pointerId);
+      setBaFromClientX(e.clientX);
+      baBar.setPointerCapture(e.pointerId);
     });
-    baLine?.addEventListener('pointermove', (e) => {
+    baBar.addEventListener('pointermove', (e) => {
       if (!draggingBa) return;
       e.stopPropagation();
       setBaFromClientX(e.clientX);
     });
     const stopBa = () => { draggingBa = false; };
-    baLine?.addEventListener('pointerup', stopBa);
-    baLine?.addEventListener('pointercancel', stopBa);
+    baBar.addEventListener('pointerup', stopBa);
+    baBar.addEventListener('pointercancel', stopBa);
   }
 
   // --- 11.2 Gemini Vision `box_2d` Garment Detection & Crop Overlay ---
