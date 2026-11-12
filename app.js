@@ -1753,6 +1753,28 @@ def run_vton(req: VtonRequest):
           baseW,
           baseH
         );
+
+        // 3D Torso cylindrical volume & collar shading overlay
+        aCtx.shadowColor = 'transparent';
+        aCtx.globalCompositeOperation = 'multiply';
+        aCtx.globalAlpha = 0.16;
+        const flankGrad = aCtx.createLinearGradient(cx - baseW / 2, 0, cx + baseW / 2, 0);
+        flankGrad.addColorStop(0, 'rgba(0,0,0,0.45)');
+        flankGrad.addColorStop(0.18, 'rgba(0,0,0,0)');
+        flankGrad.addColorStop(0.82, 'rgba(0,0,0,0)');
+        flankGrad.addColorStop(1, 'rgba(0,0,0,0.45)');
+        aCtx.fillStyle = flankGrad;
+        aCtx.fillRect(cx - baseW / 2, topY, baseW, baseH);
+
+        // Collar scoop depth shadow
+        aCtx.globalAlpha = 0.22;
+        const collarGrad = aCtx.createRadialGradient(cx, topY + 12, 4, cx, topY + 12, baseW * 0.22);
+        collarGrad.addColorStop(0, 'rgba(0,0,0,0.45)');
+        collarGrad.addColorStop(1, 'rgba(0,0,0,0)');
+        aCtx.fillStyle = collarGrad;
+        aCtx.beginPath();
+        aCtx.arc(cx, topY + 12, baseW * 0.22, 0, Math.PI * 2);
+        aCtx.fill();
         aCtx.restore();
       }
     }

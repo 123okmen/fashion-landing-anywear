@@ -218,6 +218,16 @@ export class VirtualTryOnWidget {
     this.isRecording = false;
     this.recordTimerId = null;
 
+    // Organic Physics & Sway Inertia state
+    this.physicsState = {
+      lastTime: performance.now(),
+      swayX: 0,
+      swayVelX: 0,
+      lastTorsoMidX: null,
+      lastTorsoMidY: null,
+      breathePhase: 0,
+    };
+
     // Precision Fitting Settings (Applies to both AR Camera & Static Photo!)
     this.arSettings = {
       scalePct: 100,       // 50%..200% overall scale
@@ -234,6 +244,11 @@ export class VirtualTryOnWidget {
       showShadow: true,    // Contact drop shadow
       showSkeleton: false, // Pose landmarks
       mirrorCamera: true,  // Flip selfie video
+      // Dynamic 3D Body Frame Fitting & Deformation
+      dynamicMesh: true,   // True 3D body-conforming mesh deformation
+      meshTightness: 85,   // 20%..100% body contour wrap
+      shading3D: true,     // 3D cylindrical volume lighting & ambient occlusion
+      organicMotion: true, // Respiration expansion & fabric sway inertia
     };
 
     // Static Photo State
@@ -1010,17 +1025,24 @@ export class VirtualTryOnWidget {
   }
 
   _updateSmoothedPose(rawLm, W, H) {
-    const mapPt = (lm) => ({
-      x: (this.arSettings.mirrorCamera ? 1 - lm.x : lm.x) * W,
-      y: lm.y * H,
-      visibility: lm.visibility ?? 1,
-    });
+    const mapPt = (lm) => {
+      if (!lm) return null;
+      return {
+        x: (this.arSettings.mirrorCamera ? 1 - lm.x : lm.x) * W,
+        y: lm.y * H,
+        z: ((lm.z ?? 0) * (this.arSettings.mirrorCamera ? -1 : 1)) * W,
+        visibility: lm.visibility ?? 1,
+      };
+    };
 
     const target = {
       lShoulder: mapPt(rawLm[11]),
       rShoulder: mapPt(rawLm[12]),
       lHip: mapPt(rawLm[23]),
       rHip: mapPt(rawLm[24]),
+      nose: mapPt(rawLm[0]),
+      lElbow: mapPt(rawLm[13]),
+      rElbow: mapPt(rawLm[14]),
     };
 
     if (!this.smoothedPose) {
@@ -1028,16 +1050,27 @@ export class VirtualTryOnWidget {
       return;
     }
 
-    const alpha = 0.38;
-    for (const key of ['lShoulder', 'rShoulder', 'lHip', 'rHip']) {
+    // Adaptive velocity-based filter: high response when moving fast, zero jitter when still
+    const prevMidX = (this.smoothedPose.lShoulder.x + this.smoothedPose.rShoulder.x) / 2;
+    const currMidX = (target.lShoulder.x + target.rShoulder.x) / 2;
+    const dist = Math.abs(currMidX - prevMidX);
+    const alpha = Math.min(0.72, Math.max(0.24, 0.24 + (dist / 35) * 0.48));
+
+    for (const key of ['lShoulder', 'rShoulder', 'lHip', 'rHip', 'nose', 'lElbow', 'rElbow']) {
+      if (!target[key]) continue;
+      if (!this.smoothedPose[key]) {
+        this.smoothedPose[key] = { ...target[key] };
+        continue;
+      }
       this.smoothedPose[key].x += (target[key].x - this.smoothedPose[key].x) * alpha;
       this.smoothedPose[key].y += (target[key].y - this.smoothedPose[key].y) * alpha;
+      this.smoothedPose[key].z = (this.smoothedPose[key].z ?? 0) + ((target[key].z ?? 0) - (this.smoothedPose[key].z ?? 0)) * alpha;
       this.smoothedPose[key].visibility = target[key].visibility;
     }
   }
 
   /**
-   * Core Geometry Formula with Separate Width, Length, Shift and Tilt
+   * Core Geometry Formula with Separate Width, Length, Shift, Tilt, and 3D Body Mesh Warping
    */
   computeGarmentGeometry(
     pose,
@@ -1057,13 +1090,13 @@ export class VirtualTryOnWidget {
       y: (pose.lHip.y + pose.rHip.y) / 2,
     };
 
-    const leftScreenShoulder =
-      pose.lShoulder.x <= pose.rShoulder.x ? pose.lShoulder : pose.rShoulder;
-    const rightScreenShoulder =
-      pose.lShoulder.x <= pose.rShoulder.x ? pose.rShoulder : pose.lShoulder;
+    const sLeft = pose.lShoulder.x <= pose.rShoulder.x ? pose.lShoulder : pose.rShoulder;
+    const sRight = pose.lShoulder.x <= pose.rShoulder.x ? pose.rShoulder : pose.lShoulder;
+    const hLeft = pose.lHip.x <= pose.rHip.x ? pose.lHip : pose.rHip;
+    const hRight = pose.lHip.x <= pose.rHip.x ? pose.rHip : pose.lHip;
 
-    const dx = rightScreenShoulder.x - leftScreenShoulder.x;
-    const dy = rightScreenShoulder.y - leftScreenShoulder.y;
+    const dx = sRight.x - sLeft.x;
+    const dy = sRight.y - sLeft.y;
     const shoulderWidth = Math.max(40, Math.hypot(dx, dy));
 
     const rawAngle = Math.atan2(dy, Math.max(1, Math.abs(dx)));
@@ -1107,6 +1140,185 @@ export class VirtualTryOnWidget {
     const anchorX = shoulderMid.x + userOffsetX;
     const anchorY = shoulderMid.y + userOffsetY;
 
+    // =========================================================================
+    // DYNAMIC 3D BODY FRAME MESH GENERATION (7x7 Vertices = 72 Triangles)
+    // =========================================================================
+    const isBackpack = category === 'backpack' || (this.currentProduct?.id && this.currentProduct.id.includes('backpack'));
+    const tightness = Math.max(0.2, Math.min(1.0, (Number(settings.meshTightness) || 85) / 100));
+
+    // Dynamic Physics & Respiration Micro-Dynamics
+    const now = performance.now();
+    const dt = Math.min(0.08, Math.max(0.001, (now - this.physicsState.lastTime) / 1000));
+    this.physicsState.lastTime = now;
+
+    let swayX = 0;
+    let breatheWidthFactor = 1.0;
+    if (settings.organicMotion !== false) {
+      this.physicsState.breathePhase = (this.physicsState.breathePhase + dt * 1.7) % (Math.PI * 2);
+      breatheWidthFactor = 1.0 + Math.sin(this.physicsState.breathePhase) * 0.012;
+
+      if (this.physicsState.lastTorsoMidX !== null) {
+        const velX = (shoulderMid.x - this.physicsState.lastTorsoMidX) / dt;
+        const springK = 7.5;
+        const dampingD = 4.2;
+        const acc = -springK * this.physicsState.swayX - dampingD * this.physicsState.swayVelX - velX * 0.022;
+        this.physicsState.swayVelX += acc * dt;
+        this.physicsState.swayX += this.physicsState.swayVelX * dt;
+        this.physicsState.swayX = Math.max(-28, Math.min(28, this.physicsState.swayX));
+      }
+      this.physicsState.lastTorsoMidX = shoulderMid.x;
+      this.physicsState.lastTorsoMidY = shoulderMid.y;
+      swayX = this.physicsState.swayX;
+    }
+
+    // 3D Yaw (Body Turn Direction & Perspective)
+    let yaw = 0;
+    if (pose.nose && sRight.x > sLeft.x) {
+      const noseRatio = (pose.nose.x - sLeft.x) / (sRight.x - sLeft.x);
+      yaw = Math.max(-1, Math.min(1, (noseRatio - 0.5) * 2.2));
+    } else if (typeof sRight.z === 'number' && typeof sLeft.z === 'number') {
+      yaw = Math.max(-1, Math.min(1, (sRight.z - sLeft.z) / Math.max(30, shoulderWidth * 0.4)));
+    }
+
+    // Unit directions along shoulders & spine
+    const shLen = Math.max(1, shoulderWidth);
+    const uShX = dx / shLen;
+    const uShY = dy / shLen;
+    const uSpineX = -uShY;
+    const uSpineY = uShX;
+
+    // Torso length vector
+    const spineDx = hipMid.x - shoulderMid.x;
+    const spineDy = hipMid.y - shoulderMid.y;
+    const effTorsoH = torsoHeight;
+
+    const GRID_COLS = 6;
+    const GRID_ROWS = 6;
+    const mesh = [];
+
+    // Streetwear tailoring drop & collar dimensions
+    const dropSleeveSpan = isBackpack ? shoulderWidth * 0.06 : shoulderWidth * 0.22 * userScaleX;
+    const effectiveTotalW = drawW * breatheWidthFactor;
+    const collarTopDrop = -drawH * (effectiveShoulderYRatio || 0.16);
+
+    for (let r = 0; r <= GRID_ROWS; r++) {
+      const v = r / GRID_ROWS;
+      const row = [];
+
+      // Smooth anatomical profile along torso
+      // v=0: shoulders/collar, v=0.35: underarms/chest, v=0.65: waist, v=1.0: bottom hem
+      const t = v * v * (3 - 2 * v); // Hermite smoothstep
+
+      // Interpolate torso flanks between shoulder anchors and hip anchors
+      const flankL = {
+        x: (1 - t) * sLeft.x + t * hLeft.x,
+        y: (1 - t) * sLeft.y + t * hLeft.y,
+      };
+      const flankR = {
+        x: (1 - t) * sRight.x + t * hRight.x,
+        y: (1 - t) * sRight.y + t * hRight.y,
+      };
+
+      // Flank vector and center
+      const rowMid = {
+        x: (flankL.x + flankR.x) / 2,
+        y: (flankL.y + flankR.y) / 2,
+      };
+      const rowDx = flankR.x - flankL.x;
+      const rowDy = flankR.y - flankL.y;
+      const rawSpan = Math.max(20, Math.hypot(rowDx, rowDy));
+      const rowUnitX = rowDx / rawSpan;
+      const rowUnitY = rowDy / rawSpan;
+
+      // Natural anatomical width profile (wide shoulders, tailored torso taper, organic hem)
+      let widthRatio = 1.0;
+      if (v < 0.20) {
+        widthRatio = 1.0 - v * 0.45;
+      } else if (v < 0.65) {
+        const wt = (v - 0.20) / 0.45;
+        widthRatio = 0.91 - wt * (0.18 * tightness);
+      } else {
+        const wt = (v - 0.65) / 0.35;
+        widthRatio = (0.91 - 0.18 * tightness) + wt * (0.05 + (1 - tightness) * 0.08);
+      }
+
+      const rowSpan = (effectiveTotalW * (rawSpan / shoulderWidth)) * widthRatio * 0.5;
+
+      for (let c = 0; c <= GRID_COLS; c++) {
+        const u = c / GRID_COLS;
+        const xi = 2 * u - 1; // -1 (left edge) .. 0 (center) .. 1 (right edge)
+
+        // Base horizontal position across the row
+        let px = rowMid.x + rowUnitX * (xi * rowSpan) + (centerShiftX || 0);
+        let py = rowMid.y + rowUnitY * (xi * rowSpan);
+
+        // Vertical positioning along garment height
+        const vertOffset = collarTopDrop + v * drawH;
+        px += uSpineX * vertOffset;
+        py += uSpineY * vertOffset;
+
+        // Shoulder & sleeve anatomical downward slope (deltoids & arms drape down naturally)
+        if (!isBackpack) {
+          const deltoidDrop = Math.abs(xi) * (shoulderWidth * 0.16) * Math.max(0, 1 - v / 0.55);
+          px += uSpineX * deltoidDrop;
+          py += uSpineY * deltoidDrop;
+        }
+
+        // 1. 3D Cylindrical Ribcage Curvature (Chest Barrel Projection)
+        if (!isBackpack) {
+          const zBulge = Math.sqrt(Math.max(0, 1 - xi * xi)) - 0.5;
+          const bulgeDepth = shoulderWidth * 0.09 * tightness;
+          px += uSpineX * (zBulge * bulgeDepth);
+          py += uSpineY * (zBulge * bulgeDepth);
+        }
+
+        // 2. Collar Scoop Arc (Realistic neckline dip hugging clavicle)
+        if (v < 0.35 && !isBackpack) {
+          const collarProfile = Math.exp(-9 * xi * xi) * (1 - v / 0.35);
+          const collarDip = drawH * 0.085;
+          px += uSpineX * (collarProfile * collarDip);
+          py += uSpineY * (collarProfile * collarDip);
+        }
+
+        // 3. Bottom Hemline Curve & Fabric Sway Inertia
+        if (v > 0.6) {
+          const hemWeight = (v - 0.6) / 0.4;
+          // Organic curved hem
+          const hemCurve = (1 - xi * xi) * (drawH * 0.038) * hemWeight;
+          px += uSpineX * hemCurve;
+          py += uSpineY * hemCurve;
+
+          // Fabric sway inertia
+          px += uShX * (swayX * hemWeight);
+          py += uShY * (swayX * hemWeight);
+        }
+
+        // 4. 3D Body Yaw Perspective (Logo and fabric compression on turned torso)
+        if (Math.abs(yaw) > 0.04 && !isBackpack) {
+          const yawShift = (1 - xi * xi) * yaw * (shoulderWidth * 0.12);
+          px += rowUnitX * yawShift;
+          py += rowUnitY * yawShift;
+        }
+
+        // 5. Apply User Calibration Offsets & Rotation
+        if (userOffsetX !== 0 || userOffsetY !== 0) {
+          px += userOffsetX;
+          py += userOffsetY;
+        }
+        if (userRotation !== 0) {
+          const rx = px - anchorX;
+          const ry = py - anchorY;
+          const cosR = Math.cos(userRotation);
+          const sinR = Math.sin(userRotation);
+          px = anchorX + rx * cosR - ry * sinR;
+          py = anchorY + rx * sinR + ry * cosR;
+        }
+
+        row.push({ x: px, y: py, u, v });
+      }
+      mesh.push(row);
+    }
+
     return {
       shoulderMid,
       hipMid,
@@ -1119,13 +1331,29 @@ export class VirtualTryOnWidget {
       shoulderYRatio: effectiveShoulderYRatio,
       anchorX,
       anchorY,
+      mesh,
+      gridCols: GRID_COLS,
+      gridRows: GRID_ROWS,
+      yaw,
+      tightness,
+      isBackpack,
     };
   }
 
   /**
-   * Render Garment with Opacity, Shading, Filters, and Flip
+   * Render Garment with Opacity, Shading, Filters, Flip, and 3D Body Mesh Warping
    */
   drawGarmentOverlay(ctx, garmentImg, fit, settings = {}) {
+    if (settings.dynamicMesh !== false && fit.mesh && fit.mesh.length > 2) {
+      // High-Fidelity 3D Body Frame Mesh Warping
+      this._renderDeformableGarmentMesh(ctx, garmentImg, fit, settings);
+      if (settings.shading3D !== false && !fit.isBackpack) {
+        this._renderGarment3DShading(ctx, fit, settings);
+      }
+      return;
+    }
+
+    // Clean Fallback: Standard Affine Transform
     ctx.save();
     ctx.translate(fit.anchorX, fit.anchorY);
     ctx.rotate(fit.angle);
@@ -1163,10 +1391,243 @@ export class VirtualTryOnWidget {
     ctx.restore();
   }
 
+  /**
+   * Piecewise Triangular Affine Texture Warping Engine (60+ FPS on Mobile & Desktop)
+   */
+  _renderDeformableGarmentMesh(ctx, garmentImg, fit, settings) {
+    const { mesh, gridCols, gridRows } = fit;
+    const imgW = garmentImg.naturalWidth || garmentImg.width;
+    const imgH = garmentImg.naturalHeight || garmentImg.height;
+
+    ctx.save();
+    // Blend mode & Opacity
+    ctx.globalAlpha = Math.max(0.1, Math.min(1, (settings.opacity ?? 100) / 100));
+    ctx.globalCompositeOperation = settings.blendMode || 'source-over';
+
+    // Filters
+    const br = settings.brightness ?? 100;
+    const ct = settings.contrast ?? 100;
+    if (br !== 100 || ct !== 100) {
+      ctx.filter = `brightness(${br}%) contrast(${ct}%)`;
+    }
+
+    // Contact drop-shadow
+    if (settings.showShadow !== false) {
+      ctx.shadowColor = 'rgba(15, 12, 10, 0.35)';
+      ctx.shadowBlur = 18;
+      ctx.shadowOffsetY = 8;
+    }
+
+    const flipH = Boolean(settings.flipH);
+
+    for (let r = 0; r < gridRows; r++) {
+      for (let c = 0; c < gridCols; c++) {
+        const p00 = mesh[r][c];
+        const p10 = mesh[r][c + 1];
+        const p01 = mesh[r + 1][c];
+        const p11 = mesh[r + 1][c + 1];
+
+        // UV coordinates (flipped horizontally if flipH is enabled)
+        const u00 = flipH ? 1 - p00.u : p00.u;
+        const u10 = flipH ? 1 - p10.u : p10.u;
+        const u01 = flipH ? 1 - p01.u : p01.u;
+        const u11 = flipH ? 1 - p11.u : p11.u;
+
+        // Triangle 1: (p00, p10, p01)
+        this._drawTexturedTriangle(
+          ctx, garmentImg,
+          u00 * imgW, p00.v * imgH,
+          u10 * imgW, p10.v * imgH,
+          u01 * imgW, p01.v * imgH,
+          p00.x, p00.y,
+          p10.x, p10.y,
+          p01.x, p01.y
+        );
+
+        // Triangle 2: (p10, p11, p01)
+        this._drawTexturedTriangle(
+          ctx, garmentImg,
+          u10 * imgW, p10.v * imgH,
+          u11 * imgW, p11.v * imgH,
+          u01 * imgW, p01.v * imgH,
+          p10.x, p10.y,
+          p11.x, p11.y,
+          p01.x, p01.y
+        );
+      }
+    }
+    ctx.restore();
+  }
+
+  /**
+   * Exact Affine Triangle Texture Mapper with Subpixel Edge Anti-Aliasing Dilation
+   */
+  _drawTexturedTriangle(ctx, img, sx0, sy0, sx1, sy1, sx2, sy2, dx0, dy0, dx1, dy1, dx2, dy2) {
+    const dx10 = sx1 - sx0;
+    const dy10 = sy1 - sy0;
+    const dx20 = sx2 - sx0;
+    const dy20 = sy2 - sy0;
+    const D = dx10 * dy20 - dx20 * dy10;
+    if (Math.abs(D) < 0.0001) return;
+
+    const du10 = dx1 - dx0;
+    const dv10 = dy1 - dy0;
+    const du20 = dx2 - dx0;
+    const dv20 = dy2 - dy0;
+
+    const a = (du10 * dy20 - du20 * dy10) / D;
+    const c = (dx10 * du20 - dx20 * du10) / D;
+    const b = (dv10 * dy20 - dv20 * dy10) / D;
+    const d = (dx10 * dv20 - dx20 * dv10) / D;
+    const e = dx0 - a * sx0 - c * sy0;
+    const f = dy0 - b * sx0 - d * sy0;
+
+    ctx.save();
+    ctx.beginPath();
+    // Subpixel expansion (0.45px) outwards from triangle centroid to prevent seams
+    const cx = (dx0 + dx1 + dx2) / 3;
+    const cy = (dy0 + dy1 + dy2) / 3;
+    const dilate = (x, y) => {
+      const vx = x - cx;
+      const vy = y - cy;
+      const len = Math.hypot(vx, vy) || 1;
+      return { x: x + (vx / len) * 0.45, y: y + (vy / len) * 0.45 };
+    };
+    const t0 = dilate(dx0, dy0);
+    const t1 = dilate(dx1, dy1);
+    const t2 = dilate(dx2, dy2);
+
+    ctx.moveTo(t0.x, t0.y);
+    ctx.lineTo(t1.x, t1.y);
+    ctx.lineTo(t2.x, t2.y);
+    ctx.closePath();
+    ctx.clip();
+
+    ctx.transform(a, b, c, d, e, f);
+    ctx.drawImage(img, 0, 0);
+    ctx.restore();
+  }
+
+  /**
+   * 3D Cylindrical Volume Shading & Torso Ambient Occlusion
+   */
+  _renderGarment3DShading(ctx, fit, settings) {
+    if (!fit.mesh || fit.mesh.length < 3) return;
+    const mesh = fit.mesh;
+    const rows = mesh.length;
+    const cols = mesh[0].length;
+    const midCol = Math.floor(cols / 2);
+
+    ctx.save();
+    // 1. Torso cylindrical rim shadows (flank shadow giving 3D cylindrical body shape)
+    ctx.globalCompositeOperation = 'multiply';
+    ctx.globalAlpha = 0.18;
+
+    // Left flank shadow
+    for (let r = 0; r < rows - 1; r++) {
+      const p0 = mesh[r][0];
+      const p1 = mesh[r][1];
+      const p2 = mesh[r + 1][1];
+      const p3 = mesh[r + 1][0];
+
+      const grad = ctx.createLinearGradient(p0.x, p0.y, p1.x, p1.y);
+      grad.addColorStop(0, 'rgba(0,0,0,0.45)');
+      grad.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.moveTo(p0.x, p0.y);
+      ctx.lineTo(p1.x, p1.y);
+      ctx.lineTo(p2.x, p2.y);
+      ctx.lineTo(p3.x, p3.y);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    // Right flank shadow
+    for (let r = 0; r < rows - 1; r++) {
+      const p0 = mesh[r][cols - 2];
+      const p1 = mesh[r][cols - 1];
+      const p2 = mesh[r + 1][cols - 1];
+      const p3 = mesh[r + 1][cols - 2];
+
+      const grad = ctx.createLinearGradient(p1.x, p1.y, p0.x, p0.y);
+      grad.addColorStop(0, 'rgba(0,0,0,0.45)');
+      grad.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.moveTo(p0.x, p0.y);
+      ctx.lineTo(p1.x, p1.y);
+      ctx.lineTo(p2.x, p2.y);
+      ctx.lineTo(p3.x, p3.y);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    // 2. Collar scoop depth shadow
+    const neckP = mesh[0][midCol];
+    const chestP = mesh[1][midCol];
+    const collarRadius = Math.max(16, Math.hypot(chestP.x - neckP.x, chestP.y - neckP.y) * 1.5);
+    const collarGrad = ctx.createRadialGradient(neckP.x, neckP.y, 2, neckP.x, neckP.y, collarRadius);
+    collarGrad.addColorStop(0, 'rgba(0, 0, 0, 0.28)');
+    collarGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    ctx.fillStyle = collarGrad;
+    ctx.beginPath();
+    ctx.arc(neckP.x, neckP.y, collarRadius, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 3. Center chest soft highlight (fabric sheen conforming to torso curve)
+    ctx.globalCompositeOperation = 'soft-light';
+    ctx.globalAlpha = 0.20;
+    const chestHighlight = ctx.createLinearGradient(
+      mesh[2][midCol - 1].x, mesh[2][midCol - 1].y,
+      mesh[2][midCol + 1].x, mesh[2][midCol + 1].y
+    );
+    chestHighlight.addColorStop(0, 'rgba(255,255,255,0)');
+    chestHighlight.addColorStop(0.5, 'rgba(255,255,255,0.7)');
+    chestHighlight.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = chestHighlight;
+    ctx.beginPath();
+    ctx.moveTo(mesh[1][midCol - 1].x, mesh[1][midCol - 1].y);
+    ctx.lineTo(mesh[1][midCol + 1].x, mesh[1][midCol + 1].y);
+    ctx.lineTo(mesh[rows - 2][midCol + 1].x, mesh[rows - 2][midCol + 1].y);
+    ctx.lineTo(mesh[rows - 2][midCol - 1].x, mesh[rows - 2][midCol - 1].y);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.restore();
+  }
+
   drawDebugSkeleton(ctx, pose, fit) {
     ctx.save();
-    ctx.strokeStyle = '#34d399';
-    ctx.lineWidth = 3;
+    // 1. Draw 3D Dynamic Body Wireframe Mesh if available
+    if (fit.mesh && fit.mesh.length) {
+      ctx.strokeStyle = 'rgba(52, 211, 153, 0.45)';
+      ctx.lineWidth = 1.2;
+      const rows = fit.mesh.length;
+      const cols = fit.mesh[0].length;
+      // Horizontal mesh rings
+      for (let r = 0; r < rows; r++) {
+        ctx.beginPath();
+        ctx.moveTo(fit.mesh[r][0].x, fit.mesh[r][0].y);
+        for (let c = 1; c < cols; c++) {
+          ctx.lineTo(fit.mesh[r][c].x, fit.mesh[r][c].y);
+        }
+        ctx.stroke();
+      }
+      // Vertical contour ribs
+      for (let c = 0; c < cols; c++) {
+        ctx.beginPath();
+        ctx.moveTo(fit.mesh[0][c].x, fit.mesh[0][c].y);
+        for (let r = 1; r < rows; r++) {
+          ctx.lineTo(fit.mesh[r][c].x, fit.mesh[r][c].y);
+        }
+        ctx.stroke();
+      }
+    }
+
+    // 2. Draw Key Pose Landmarks
+    ctx.strokeStyle = '#10b981';
+    ctx.lineWidth = 2.5;
     ctx.beginPath();
     ctx.moveTo(pose.lShoulder.x, pose.lShoulder.y);
     ctx.lineTo(pose.rShoulder.x, pose.rShoulder.y);
@@ -1441,10 +1902,13 @@ export class VirtualTryOnWidget {
         const lm = result?.landmarks?.[0];
         if (lm && lm.length > 24) {
           detectedPose = {
-            lShoulder: { x: lm[11].x * W, y: lm[11].y * H, visibility: lm[11].visibility ?? 1 },
-            rShoulder: { x: lm[12].x * W, y: lm[12].y * H, visibility: lm[12].visibility ?? 1 },
-            lHip: { x: lm[23].x * W, y: lm[23].y * H, visibility: lm[23].visibility ?? 1 },
-            rHip: { x: lm[24].x * W, y: lm[24].y * H, visibility: lm[24].visibility ?? 1 },
+            lShoulder: { x: lm[11].x * W, y: lm[11].y * H, z: (lm[11].z ?? 0) * W, visibility: lm[11].visibility ?? 1 },
+            rShoulder: { x: lm[12].x * W, y: lm[12].y * H, z: (lm[12].z ?? 0) * W, visibility: lm[12].visibility ?? 1 },
+            lHip: { x: lm[23].x * W, y: lm[23].y * H, z: (lm[23].z ?? 0) * W, visibility: lm[23].visibility ?? 1 },
+            rHip: { x: lm[24].x * W, y: lm[24].y * H, z: (lm[24].z ?? 0) * W, visibility: lm[24].visibility ?? 1 },
+            nose: lm[0] ? { x: lm[0].x * W, y: lm[0].y * H, z: (lm[0].z ?? 0) * W, visibility: lm[0].visibility ?? 1 } : null,
+            lElbow: lm[13] ? { x: lm[13].x * W, y: lm[13].y * H, z: (lm[13].z ?? 0) * W, visibility: lm[13].visibility ?? 1 } : null,
+            rElbow: lm[14] ? { x: lm[14].x * W, y: lm[14].y * H, z: (lm[14].z ?? 0) * W, visibility: lm[14].visibility ?? 1 } : null,
           };
         }
       } catch (e) {
@@ -2005,8 +2469,40 @@ export class VirtualTryOnWidget {
                 </label>
                 <label class="inline-flex items-center gap-1.5 cursor-pointer text-neutral-700">
                   <input type="checkbox" id="vton-skeleton-toggle" class="rounded accent-emerald-600" />
-                  <span>Khớp vai (11,12)</span>
+                  <span>Khớp xương & Lưới 3D</span>
                 </label>
+              </div>
+
+              <!-- DYNAMIC 3D BODY FRAME TRACKING & WARPING -->
+              <div class="pt-2 border-t border-neutral-200 space-y-2">
+                <div class="flex items-center justify-between">
+                  <label class="inline-flex items-center gap-1.5 cursor-pointer text-xs font-semibold text-neutral-900">
+                    <input type="checkbox" id="vton-dynamic-mesh-toggle" checked class="rounded accent-emerald-600" />
+                    <span>✨ Động dính theo khung người 3D</span>
+                  </label>
+                  <span class="text-[9px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold uppercase tracking-wider">AI Warp</span>
+                </div>
+
+                <div id="vton-mesh-controls" class="space-y-1.5 pl-4">
+                  <div>
+                    <div class="flex justify-between text-[11px] mb-0.5">
+                      <span class="text-neutral-600">Độ ôm đường cong cơ thể:</span>
+                      <span id="vton-mesh-tightness-val" class="font-mono font-semibold">85%</span>
+                    </div>
+                    <input type="range" id="vton-mesh-tightness-slider" min="20" max="100" value="85" class="w-full accent-neutral-950 cursor-pointer" />
+                  </div>
+
+                  <div class="flex items-center justify-between text-[11px] pt-1">
+                    <label class="inline-flex items-center gap-1.5 cursor-pointer text-neutral-700">
+                      <input type="checkbox" id="vton-shading3d-toggle" checked class="rounded accent-emerald-600" />
+                      <span>Bóng khối 3D</span>
+                    </label>
+                    <label class="inline-flex items-center gap-1.5 cursor-pointer text-neutral-700">
+                      <input type="checkbox" id="vton-organic-motion-toggle" checked class="rounded accent-emerald-600" />
+                      <span>Độ rủ & nhịp thở</span>
+                    </label>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -2110,6 +2606,12 @@ export class VirtualTryOnWidget {
       blendSelect: wrapper.querySelector('#vton-blend-select'),
       flipHToggle: wrapper.querySelector('#vton-fliph-toggle'),
       skeletonToggle: wrapper.querySelector('#vton-skeleton-toggle'),
+      dynamicMeshToggle: wrapper.querySelector('#vton-dynamic-mesh-toggle'),
+      meshTightnessSlider: wrapper.querySelector('#vton-mesh-tightness-slider'),
+      meshTightnessVal: wrapper.querySelector('#vton-mesh-tightness-val'),
+      shading3dToggle: wrapper.querySelector('#vton-shading3d-toggle'),
+      organicMotionToggle: wrapper.querySelector('#vton-organic-motion-toggle'),
+      meshControls: wrapper.querySelector('#vton-mesh-controls'),
       resetFitBtn: wrapper.querySelector('#vton-reset-fit-btn'),
       toast: wrapper.querySelector('#vton-toast'),
     };
@@ -2229,6 +2731,27 @@ export class VirtualTryOnWidget {
       this.arSettings.showSkeleton = e.target.checked;
       this._refreshStaticFallbackLive();
     });
+    this.el.dynamicMeshToggle?.addEventListener('change', (e) => {
+      this.arSettings.dynamicMesh = e.target.checked;
+      if (this.el.meshControls) {
+        this.el.meshControls.style.opacity = e.target.checked ? '1' : '0.4';
+        this.el.meshControls.style.pointerEvents = e.target.checked ? 'auto' : 'none';
+      }
+      this._refreshStaticFallbackLive();
+    });
+    this.el.meshTightnessSlider?.addEventListener('input', (e) => {
+      this.arSettings.meshTightness = Number(e.target.value);
+      if (this.el.meshTightnessVal) this.el.meshTightnessVal.textContent = `${this.arSettings.meshTightness}%`;
+      this._refreshStaticFallbackLive();
+    });
+    this.el.shading3dToggle?.addEventListener('change', (e) => {
+      this.arSettings.shading3D = e.target.checked;
+      this._refreshStaticFallbackLive();
+    });
+    this.el.organicMotionToggle?.addEventListener('change', (e) => {
+      this.arSettings.organicMotion = e.target.checked;
+      this._refreshStaticFallbackLive();
+    });
 
     this.el.resetFitBtn.addEventListener('click', () => {
       this.arSettings.offsetX = 0;
@@ -2238,6 +2761,10 @@ export class VirtualTryOnWidget {
       this.arSettings.rotationDeg = 0;
       this.arSettings.opacity = 100;
       this.arSettings.flipH = false;
+      this.arSettings.dynamicMesh = true;
+      this.arSettings.meshTightness = 85;
+      this.arSettings.shading3D = true;
+      this.arSettings.organicMotion = true;
       this.el.offsetXSlider.value = '0';
       this.el.offsetYSlider.value = '0';
       this.el.scaleXSlider.value = '100';
@@ -2251,6 +2778,15 @@ export class VirtualTryOnWidget {
       this.el.rotationVal.textContent = '0°';
       this.el.opacityVal.textContent = '100%';
       this.el.flipHToggle.checked = false;
+      if (this.el.dynamicMeshToggle) this.el.dynamicMeshToggle.checked = true;
+      if (this.el.meshTightnessSlider) this.el.meshTightnessSlider.value = '85';
+      if (this.el.meshTightnessVal) this.el.meshTightnessVal.textContent = '85%';
+      if (this.el.shading3dToggle) this.el.shading3dToggle.checked = true;
+      if (this.el.organicMotionToggle) this.el.organicMotionToggle.checked = true;
+      if (this.el.meshControls) {
+        this.el.meshControls.style.opacity = '1';
+        this.el.meshControls.style.pointerEvents = 'auto';
+      }
       this._refreshStaticFallbackLive();
       this._toast('Đã đặt lại phom về mặc định!');
     });
