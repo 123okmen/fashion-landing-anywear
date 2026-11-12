@@ -3301,34 +3301,172 @@ body.modal-open { overflow: hidden; }
 }
 
 /* ==========================================================================
-   v4 — USER-PERSPECTIVE UI/UX & MOBILE RESPONSIVE AUDIT FIXES
+   v5 — ANYWEAR (DECART AI) DEFAULT 1-LINE SCRIPT EMBED & AUTO TRY-ON STYLING
    ========================================================================== */
 
-/* 1. Hide static cyan body guide rectangle unless AI Mesh Debug is toggled */
-.ar-body-guides {
+/* 1. Ensure Lookbook & Product card images have clean bounds so Decart AI's
+      anywear.js automatically pins .vton-btn (Try-On) at top-left */
+.lookbook-img-primary,
+.lookbook-img-secondary {
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.product-media .anywear-card-overlay,
+.lookbook-media-wrap .anywear-card-overlay {
+  justify-content: flex-end;
+}
+
+/* 2. Style Decart AI's automatic .vton-btn ("Try-On") on every product card */
+.product-media .vton-btn,
+.lookbook-media-wrap .vton-btn,
+.hero-stage-images .vton-btn,
+.studio-visual-stage .vton-btn {
+  position: absolute !important;
+  top: 14px !important;
+  left: 14px !important;
+  z-index: 25 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 5px !important;
+  padding: 5px 11px !important;
+  font-family: var(--font-mono) !important;
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  background: rgba(255, 255, 255, 0.95) !important;
+  color: #0b0c0e !important;
+  border-radius: 6px !important;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.38) !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+  cursor: pointer !important;
+}
+
+.manifesto-interactive-stage .vton-btn {
   display: none !important;
 }
-.studio-visual-stage.mesh-debug-on .ar-body-guides {
-  display: block !important;
+
+body.modal-open #__decart-tryon-widget:not(:has(iframe)) {
+  display: none !important;
 }
 
-/* 2. Prevent "Giữ để xem cơ thể gốc" button (#studioHoldSelfBtn) from overlapping bottom controls */
-.aw-hold-self-btn {
-  top: 86px !important;
-  right: 16px !important;
-  bottom: auto !important;
-  left: auto !important;
-  transform: none !important;
-  z-index: 15 !important;
-  padding: 6px 12px !important;
-  font-size: 10.5px !important;
-  background: rgba(10, 12, 16, 0.85) !important;
-  border: 1px solid rgba(200, 255, 46, 0.45) !important;
-  color: #e4f8b6 !important;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+/* 3. Anywear (Decart AI) 1-Line Script Embed & Free Trial Policy UI */
+.aw-section-subhead {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--aw-lime);
+  margin-bottom: 10px;
 }
 
-/* 3. Ensure #aiPoseHudPill never overlaps .studio-top-bar or #studioHoldSelfBtn */
+.aw-policy-alert-box {
+  margin-top: 16px;
+  padding: 16px 18px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(201, 169, 110, 0.14), rgba(217, 30, 42, 0.12));
+  border: 1px solid rgba(201, 169, 110, 0.45);
+}
+
+.aw-policy-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.aw-policy-badge {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent-gold);
+}
+
+.aw-rate-pill {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: rgba(217, 30, 42, 0.25);
+  border: 1px solid rgba(217, 30, 42, 0.55);
+  color: #ffb4b9;
+}
+
+.aw-policy-alert-box p {
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text-light);
+  margin: 0;
+}
+
+.aw-script-embed-box {
+  background: rgba(8, 10, 14, 0.92);
+  border: 1px solid rgba(184, 255, 44, 0.35);
+  border-radius: 14px;
+  padding: 12px 14px;
+  margin-bottom: 14px;
+}
+
+.aw-script-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.aw-copy-code-btn {
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid rgba(184, 255, 44, 0.45);
+  background: rgba(184, 255, 44, 0.14);
+  color: var(--aw-lime);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.aw-copy-code-btn:hover {
+  background: var(--aw-lime);
+  color: #0b0c0e;
+}
+
+.aw-script-pre {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #060709;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: #c8ff2e;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.aw-script-telemetry {
+  margin-top: 8px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+/* 4. Studio Top Bar & Swatch / Saved Lookbook Card styling */
 .studio-top-bar {
   z-index: 16 !important;
   padding: 12px 16px !important;
@@ -3336,41 +3474,6 @@ body.modal-open { overflow: hidden; }
   flex-wrap: wrap;
 }
 
-.ai-pose-hud-pill {
-  top: 86px !important;
-  left: 16px !important;
-  max-width: calc(100% - 210px);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  z-index: 14 !important;
-}
-
-/* 4. Tame external Decart Anywear widget (.vton-btn & floating bar) so it never covers buttons or modal */
-.hero-stage-card .vton-btn,
-.studio-visual-stage .vton-btn,
-.manifesto-interactive-stage .vton-btn {
-  display: none !important;
-}
-
-.product-media .vton-btn,
-.lookbook-media-wrap .vton-btn {
-  opacity: 0;
-  transition: opacity 0.2s ease;
-  pointer-events: none;
-}
-
-#__decart-tryon-widget:not(:has(iframe)),
-#__decart-imgbtn,
-.vton-btn {
-  display: none !important;
-}
-
-body.modal-open #__decart-tryon-widget {
-  display: none !important;
-}
-
-/* 5. Skin Palette Swatch & Saved Lookbook Card styling alignment */
 .aw-Swatch-chip,
 .aw-swatch-chip {
   display: inline-flex;
@@ -3449,7 +3552,7 @@ body.modal-open #__decart-tryon-widget {
   background: var(--accent-red);
 }
 
-/* 6. Mobile Header & Studio Responsive Polish (320px - 768px) */
+/* 5. Mobile Header & Responsive Polish (320px - 768px) */
 @media (max-width: 768px) {
   .hero-section,
   .anywear-hub-section,
@@ -3490,6 +3593,16 @@ body.modal-open #__decart-tryon-widget {
     content: '🛍 ';
   }
 
+  /* Cap mobile card width at 82vw so Decart AI's anywear.js (which skips images > 85vw)
+     automatically pins .vton-btn (Try-On) onto every mobile product card too! */
+  .product-card,
+  .hero-stage-card {
+    max-width: 82vw;
+    margin-left: auto;
+    margin-right: auto;
+    width: 100%;
+  }
+
   /* Studio Modal on Mobile */
   .anywear-studio-window {
     display: flex !important;
@@ -3500,8 +3613,8 @@ body.modal-open #__decart-tryon-widget {
   }
   .studio-viewport-panel {
     flex: 0 0 auto !important;
-    height: 520px !important;
-    min-height: 520px !important;
+    height: 480px !important;
+    min-height: 480px !important;
   }
   .studio-controls-panel {
     flex: 0 0 auto !important;
@@ -3510,29 +3623,17 @@ body.modal-open #__decart-tryon-widget {
     overflow-y: visible !important;
     padding: 20px 16px 36px !important;
   }
-  .ai-pose-hud-pill {
-    top: 86px !important;
-    left: 10px !important;
-    right: 10px !important;
-    max-width: calc(100% - 20px) !important;
-    font-size: 9px !important;
-  }
-  .aw-hold-self-btn {
-    top: 118px !important;
-    right: 10px !important;
-    font-size: 9.5px !important;
-    padding: 5px 10px !important;
-  }
   .studio-bottom-bar {
     padding: 8px 10px !important;
     gap: 6px !important;
   }
   .aw-cam-controls .dock-mini-btn,
   .btn-aw-camera-start {
-    padding: 5px 8px !important;
-    font-size: 9.5px !important;
+    padding: 6px 10px !important;
+    font-size: 10px !important;
   }
 }
+
 
 
 
