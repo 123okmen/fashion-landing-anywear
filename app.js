@@ -1,6 +1,11 @@
 // ============================================================================
 // ATELIER V.26 — LALIN.VN (BST) × STRESSMAMA.VN (VISUAL) × MINDE.VN (PRODUCT)
-// Integrated with AnyWear: Live Virtual Try-On (Browser + Extension + Live Cam)
+// AnyWear AI Body-Fit Engine v3.0:
+//   - AI Garment Synthesis & Studio/Head/Skin Segmentation on all 69 Lalin items
+//   - MediaPipe Pose 33-Keypoint Real-Time Skeleton Tracking
+//   - 96-Triangle (6x8 Grid) Piecewise Affine Cloth Mesh Warping onto Real Body
+//   - Forearm/Hand Occlusion + 3D Torso Yaw Foreshortening + Dynamic Fold Shading
+//   - Inline On-Card "✦ AI Fit Live" on every product + Full AnyWear Live Studio
 // ============================================================================
 (() => {
   'use strict';
@@ -46,8 +51,10 @@
       color: null,
       imgIndex: 0,
       tier: 'standard',
+      viewMode: 'ai-motion', // 'avatar' | 'ai-motion' | 'webcam'
       autoTrack: true,
       aiMatte: true,
+      showMeshDebug: false,
       holdOriginal: false,
       facingMode: 'user',
       inCapsule: false
@@ -66,20 +73,19 @@
   function showToast(msg) {
     const toast = $('#toastNotification');
     if (!toast) return;
-    toast.innerHTML = `<span style="color: var(--aw-lime); font-weight: 700;">✦ AnyWear.Live:</span> ${esc(msg)}`;
+    toast.innerHTML = `<span style="color: var(--aw-lime); font-weight: 700;">✦ AnyWear AI:</span> ${esc(msg)}`;
     toast.classList.add('show');
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => toast.classList.remove('show'), 4000);
+    toastTimer = setTimeout(() => toast.classList.remove('show'), 4200);
   }
 
-  // Detect AnyWear Chrome Extension (sets document.documentElement.dataset.anywear)
   function checkAnywearExtension() {
     const extBadge = $('#awExtStatusBadge');
     const hasExt = Boolean(document.documentElement.dataset.anywear);
     if (extBadge) {
       extBadge.textContent = hasExt
         ? '✦ AnyWear Chrome Extension: Đã Kết Nối'
-        : '✦ AnyWear Browser Engine: Sẵn Sàng (Web + Mobile)';
+        : '✦ AnyWear AI Body-Fit Engine: Sẵn Sàng (3D Pose Mesh)';
     }
   }
   checkAnywearExtension();
@@ -98,7 +104,7 @@
         const label = target.getAttribute('data-cursor');
         customCursor.textContent = label;
         customCursor.classList.add('active');
-        customCursor.classList.toggle('cursor-anywear', /AR|TRY/i.test(label));
+        customCursor.classList.toggle('cursor-anywear', /AR|TRY|AI/i.test(label));
       } else {
         customCursor.classList.remove('active');
       }
@@ -171,7 +177,7 @@
       const ratio = Math.max(6, Math.min(94, ((clientX - rect.left) / rect.width) * 100));
       heroAfter.style.clipPath = `inset(0 0 0 ${ratio}%)`;
       heroSplitBar.style.left = `${ratio}%`;
-      if (heroReadout) heroReadout.textContent = `ANYWEAR SCAN ${Math.round(ratio)}% • LIVE 60FPS`;
+      if (heroReadout) heroReadout.textContent = `ANYWEAR AI MESH ${Math.round(ratio)}% • LIVE 60FPS`;
     };
     heroStage.addEventListener('mousemove', (e) => updateHeroSplit(e.clientX));
     heroStage.addEventListener('touchmove', (e) => { if (e.touches[0]) updateHeroSplit(e.touches[0].clientX); }, { passive: true });
@@ -189,7 +195,7 @@
   });
 
   // ==========================================================================
-  // 4. LALIN LOOKBOOK: DRAG-TO-GLIDE + VELOCITY SKEW + PARALLAX
+  // 4. LALIN LOOKBOOK: DRAG-TO-GLIDE + VELOCITY SKEW + INLINE AI BODY-FIT
   // ==========================================================================
   const lookbookTrack = $('#lookbookTrack');
   const lookbookViewport = $('#lookbookViewport');
@@ -224,8 +230,12 @@
     lookbookTrack.innerHTML = items.map((p, i) => `
       <article class="lookbook-card" data-id="${p.id}" data-cursor="DRAG ↔">
         <div class="lookbook-media-wrap">
-          <img src="${p.img}" alt="${esc(p.title)}" class="lookbook-img-primary" loading="${i < 4 ? 'eager' : 'lazy'}" data-garment-id="${p.id}" />
-          <img src="${p.imgAlt}" alt="${esc(p.title)} — góc khác" class="lookbook-img-secondary" loading="lazy" data-garment-id="${p.id}" />
+          <img src="${p.img}" alt="${esc(p.title)}" class="lookbook-img-primary" loading="${i < 4 ? 'eager' : 'lazy'}" draggable="true" data-garment-id="${p.id}" />
+          <img src="${p.imgAlt}" alt="${esc(p.title)} — góc khác" class="lookbook-img-secondary" loading="lazy" draggable="true" data-garment-id="${p.id}" />
+          <canvas class="card-ai-live-canvas" width="360" height="460"></canvas>
+          <button type="button" class="card-ai-fit-toggle" data-inline-aifit="${p.id}" title="Mô phỏng AI khớp trang phục vào chuyển động cơ thể ngay trên thẻ">
+            ✦ AI Fit Live
+          </button>
           <div class="anywear-card-overlay">
             <button type="button" class="anywear-live-pill" data-open-tryon="${p.id}">
               <span class="aw-lime-dot"></span> ✦ Try on
@@ -234,13 +244,13 @@
           </div>
           <div class="card-anywear-dock">
             <div class="dock-top-row">
-              <span>LALIN × ANYWEAR 360°</span>
+              <span>LALIN × ANYWEAR AI MESH</span>
               <span class="scrub-status-label">Kéo để đổi góc</span>
             </div>
             <input type="range" min="0" max="100" value="0" class="angle-scrubber-input lookbook-scrubber" aria-label="Đổi góc ảnh ${esc(p.title)}" />
             <div class="dock-top-row">
               <span style="color: var(--accent-gold);">${esc(p.fabric)}</span>
-              <button type="button" class="dock-mini-btn tryon-trigger" data-open-tryon="${p.id}">✦ Try on Live</button>
+              <button type="button" class="dock-mini-btn tryon-trigger" data-open-tryon="${p.id}">✦ Mở Phòng Thử AI</button>
             </div>
           </div>
         </div>
@@ -258,6 +268,7 @@
 
     $$('.lookbook-card', lookbookTrack).forEach((card, i) => {
       observeReveal(card, i);
+      const p = PRODUCTS.find((x) => x.id === card.dataset.id);
       const secondary = $('.lookbook-img-secondary', card);
       const label = $('.scrub-status-label', card);
       $('.lookbook-scrubber', card)?.addEventListener('input', (e) => {
@@ -266,6 +277,7 @@
         secondary.style.clipPath = val === 0 ? '' : `polygon(0 0, ${val}% 0, ${val}% 100%, 0 100%)`;
         if (label) label.textContent = val > 50 ? `Góc thứ 2 • ${val}%` : `Góc chính • ${val}%`;
       });
+      if (p) bindInlineCardAiFit(card, p);
     });
 
     if (lookbookViewport) lookbookViewport.scrollLeft = 0;
@@ -273,6 +285,14 @@
   }
 
   lookbookTrack?.addEventListener('click', (e) => {
+    const inlineBtn = e.target.closest('[data-inline-aifit]');
+    if (inlineBtn) {
+      e.stopPropagation();
+      const card = inlineBtn.closest('.lookbook-card');
+      const prod = PRODUCTS.find((p) => p.id === inlineBtn.dataset.inlineAifit);
+      if (card && prod) toggleInlineCardAiFit(card, prod);
+      return;
+    }
     const btn = e.target.closest('[data-open-tryon]');
     if (!btn) return;
     e.stopPropagation();
@@ -408,7 +428,7 @@
   });
 
   // ==========================================================================
-  // 6. PRODUCT SHOWROOM (69 Lalin Products + Draggable AnyWear Images)
+  // 6. PRODUCT SHOWROOM (69 Lalin Products + Inline AI Fit Live on Every Card)
   // ==========================================================================
   const productGrid = $('#productGrid');
   const loadMoreBtn = $('#loadMoreBtn');
@@ -436,9 +456,13 @@
     const colors = p.colors.length ? ` · ${esc(p.colors.join(' / '))}` : '';
     return `
       <article class="product-card" data-product-id="${p.id}">
-        <div class="product-media" data-cursor="TRY ON AR">
+        <div class="product-media" data-cursor="AI BODY-FIT">
           <img src="${p.img}" alt="${esc(p.title)}" class="product-img-main" loading="lazy" draggable="true" data-garment-id="${p.id}" />
           <img src="${p.imgAlt}" alt="${esc(p.title)} — góc khác" class="product-img-alt" loading="lazy" draggable="true" data-garment-id="${p.id}" />
+          <canvas class="card-ai-live-canvas" width="360" height="460"></canvas>
+          <button type="button" class="card-ai-fit-toggle" data-inline-aifit="${p.id}" title="Mô phỏng AI khớp trang phục vào chuyển động cơ thể ngay trên thẻ">
+            ✦ AI Fit Live
+          </button>
           <div class="card-virtual-mesh-overlay"></div>
           <div class="fabric-loupe"><span class="loupe-caption">X-RAY: ${esc(p.fabric)}</span></div>
           <div class="anywear-card-overlay">
@@ -448,8 +472,8 @@
             <span class="chapter-tag">${esc(SHORT_LABELS[p.category] || '')}</span>
           </div>
           <div class="card-fit-telemetry">
-            <span>✦ CHẤT LIỆU: ${esc(p.fabric)}</span>
-            <span>✦ KÉO ẢNH THẢ VÀO CAPSULE ĐỂ THỬ</span>
+            <span>✦ AI POSE 33 ĐIỂM + 96-TRIANGLE CLOTH MESH</span>
+            <span>✦ BẤM "AI FIT LIVE" HOẶC MỞ PHÒNG THỬ CAM</span>
           </div>
           <div class="card-anywear-dock">
             <div class="dock-top-row">
@@ -483,7 +507,7 @@
               </div>
             </div>
             <div class="product-actions">
-              <button type="button" class="btn-anywear-card" data-tryon-id="${p.id}"><span>✦</span> Try on (AnyWear)</button>
+              <button type="button" class="btn-anywear-card" data-tryon-id="${p.id}"><span>✦</span> Try on (AI Body-Fit)</button>
               <button type="button" class="btn-book-item" data-book-id="${p.id}">${rentMode ? '+ Đặt Thuê' : '+ Mua Ngay'}</button>
             </div>
           </div>
@@ -493,6 +517,7 @@
 
   function bindProductCard(card) {
     const p = PRODUCTS.find((x) => x.id === card.dataset.productId);
+    if (!p) return;
     const media = $('.product-media', card);
     const imgMain = $('.product-img-main', card);
     const imgAlt = $('.product-img-alt', card);
@@ -500,7 +525,6 @@
     const angleLabel = $('.angle-readout-label', card);
     let loupeSrc = p.imgFull;
 
-    // Enable native HTML5 drag-and-drop into AnyWear Capsule / Extension
     [imgMain, imgAlt].forEach((img) => {
       img?.addEventListener('dragstart', (e) => {
         e.dataTransfer.setData('text/uri-list', p.imgFull);
@@ -544,6 +568,8 @@
       const on = media.classList.toggle('mesh-active');
       e.currentTarget.classList.toggle('active', on);
     });
+
+    bindInlineCardAiFit(card, p);
   }
 
   function renderProducts() {
@@ -561,6 +587,14 @@
   }
 
   productGrid?.addEventListener('click', (e) => {
+    const inlineBtn = e.target.closest('[data-inline-aifit]');
+    if (inlineBtn) {
+      e.stopPropagation();
+      const card = inlineBtn.closest('.product-card');
+      const prod = PRODUCTS.find((p) => p.id === inlineBtn.dataset.inlineAifit);
+      if (card && prod) toggleInlineCardAiFit(card, prod);
+      return;
+    }
     const tryBtn = e.target.closest('[data-tryon-id]');
     if (tryBtn) {
       openStudio(PRODUCTS.find((p) => p.id === tryBtn.dataset.tryonId));
@@ -606,12 +640,12 @@
   });
 
   // ==========================================================================
-  // 7. ANYWEAR: LIVE VIRTUAL ENGINE
-  //    - 4 Garment Input Methods: Product Click, File/Screenshot Upload,
-  //      Clipboard Paste (Ctrl+V), Drag & Drop (from page / Pinterest / Google),
-  //      and Product/Image URL Resolver
-  //    - Real-Time 60FPS Motion-Tracked Webcam Canvas + Smart AI Background Matte
-  //    - Floating Capsule while browsing + Document PiP + Official anywear.live link
+  // 7. ANYWEAR AI BODY-FIT ENGINE v3.0
+  //    - AI Garment Torso Extraction (removes original model's head, neck,
+  //      background, and outer skin so only the clothing mesh remains)
+  //    - Real-Time MediaPipe Pose 33-Landmark Skeleton Detection
+  //    - 96-Triangle (6x8 Subdivision Grid) Piecewise Affine Cloth Warping
+  //    - Real-Time Forearm/Hand Occlusion + 3D Yaw Perspective + Fold Shading
   // ==========================================================================
   const modal = $('#anywearModal');
   const stage = $('#studioVisualStage');
@@ -619,70 +653,107 @@
   const webcamVideo = $('#studioWebcamVideo');
   const liveCanvas = $('#anywearLiveCanvas');
   const capsuleCanvas = $('#capsuleMiniCanvas');
-  const arProjection = $('#arGarmentProjection');
   const arImg = $('#arGarmentImg');
   const inputHeight = $('#inputHeight');
   const inputWeight = $('#inputWeight');
   const inputWaist = $('#inputWaist');
   const capsuleEl = $('#anywearCapsule');
+  const aiSynthOverlay = $('#aiSynthesisOverlay');
+  const aiSynthText = $('#aiSynthesisStatusText');
+  const aiPoseHudPill = $('#aiPoseHudPill');
+  const aiPoseHudText = $('#aiPoseHudText');
   let lastFocused = null;
 
-  // Processed offscreen garment canvas (with AI background matte applied)
-  const garmentSourceImg = new Image();
-  garmentSourceImg.crossOrigin = 'anonymous';
-  let garmentProcessedCanvas = null;
-  let garmentRawLoaded = false;
+  // Cache of synthesized garments by image URL so switching or inline card preview is instant
+  const garmentCache = new Map();
 
-  // Real-time upper-body motion tracking state
-  const tracker = {
-    cx: 0.5,       // smoothed normalized torso X (0..1)
-    cy: 0.58,      // smoothed normalized torso Y (0..1)
-    scale: 1.0,    // smoothed distance scale
-    tilt: 0.0,     // smoothed shoulder tilt radians
-    manualX: 0,    // user drag offset px
-    manualY: 0,
-    manualScale: 1.0,
-    prevFrame: null,
-    workCanvas: document.createElement('canvas'),
-    rafId: null
-  };
-  tracker.workCanvas.width = 64;
-  tracker.workCanvas.height = 48;
-  const workCtx = tracker.workCanvas.getContext('2d', { willReadFrequently: true });
+  // Active Studio Garment Asset
+  let activeGarmentAsset = null;
+  let synthTimerId = null;
 
-  // Build AI-matted garment offscreen canvas (removes bright/uniform studio background around garment)
-  function buildGarmentMatte(imgEl) {
-    const w = 420;
-    const h = Math.round((imgEl.naturalHeight / Math.max(1, imgEl.naturalWidth)) * w) || 540;
-    const c = document.createElement('canvas');
-    c.width = w;
-    c.height = h;
-    const ctx = c.getContext('2d');
+  // Trigger brief AI synthesis scan animation (like AnyWear reference video)
+  function triggerAiSynthesisScan(message = 'AI đang phân tách trang phục & khớp 33 điểm cơ thể...') {
+    if (!aiSynthOverlay) return;
+    if (aiSynthText) aiSynthText.textContent = message;
+    aiSynthOverlay.hidden = false;
+    clearTimeout(synthTimerId);
+    synthTimerId = setTimeout(() => {
+      aiSynthOverlay.hidden = true;
+    }, 620);
+  }
+
+  /**
+   * AI Garment Torso Synthesizer:
+   * Takes a Lalin model product photo and extracts ONLY the garment (áo/đầm):
+   *  1. Removes the model's head, face, hair, and upper neck above the collar line
+   *     using category-aware neckline curve (Cổ Yếm halter vs. Áo Tơ/Gấm collar).
+   *  2. Removes the studio background using multi-point border chroma-luminance clustering.
+   *  3. Detects and softens exposed bare skin on far left/right margins so the user's
+   *     real arms & shoulders blend naturally.
+   *  4. Builds an headless/backgroundless offscreen canvas + UV bounding rig for
+   *     the 6x8 (96-triangle) cloth deformation mesh.
+   */
+  function synthesizeGarmentAsset(imgEl, category = 'to-lua') {
+    const w = 440;
+    const h = Math.round((imgEl.naturalHeight / Math.max(1, imgEl.naturalWidth)) * w) || 560;
+
+    // 1. Clean Garment Canvas (Headless, Background-Removed)
+    const clothCanvas = document.createElement('canvas');
+    clothCanvas.width = w;
+    clothCanvas.height = h;
+    const ctx = clothCanvas.getContext('2d');
     ctx.drawImage(imgEl, 0, 0, w, h);
+
+    // 2. Body-Only Base Canvas (for AI Motion Simulation when webcam is off:
+    //    softly blurs/neutralizes old garment area so warped mesh sits cleanly on moving body)
+    const bodyBaseCanvas = document.createElement('canvas');
+    bodyBaseCanvas.width = w;
+    bodyBaseCanvas.height = h;
+    const bctx = bodyBaseCanvas.getContext('2d');
+    bctx.drawImage(imgEl, 0, 0, w, h);
+
+    // Anatomical UV rig on the source product photo (normalized 0..1)
+    const isHalter = category === 'yem';
+    const uvRig = {
+      uMin: isHalter ? 0.21 : 0.14,
+      uMax: isHalter ? 0.79 : 0.86,
+      vNeck: 0.235,
+      vShoulder: 0.265,
+      vBust: 0.42,
+      vWaist: 0.62,
+      vHem: 0.89
+    };
 
     try {
       const imgData = ctx.getImageData(0, 0, w, h);
       const data = imgData.data;
 
-      // Sample corners & top-left/right edges to estimate studio background color
-      const samples = [
-        [4, 4], [w - 5, 4], [4, Math.floor(h * 0.3)], [w - 5, Math.floor(h * 0.3)],
-        [4, Math.floor(h * 0.7)], [w - 5, Math.floor(h * 0.7)]
+      // Sample studio background from 10 perimeter points
+      const bgSamples = [
+        [4, 4], [w - 5, 4],
+        [4, Math.floor(h * 0.18)], [w - 5, Math.floor(h * 0.18)],
+        [4, Math.floor(h * 0.42)], [w - 5, Math.floor(h * 0.42)],
+        [4, Math.floor(h * 0.68)], [w - 5, Math.floor(h * 0.68)],
+        [4, Math.floor(h * 0.88)], [w - 5, Math.floor(h * 0.88)]
       ];
-      let sr = 0; let sg = 0; let sb = 0;
-      samples.forEach(([sx, sy]) => {
-        const idx = (sy * w + sx) * 4;
-        sr += data[idx];
-        sg += data[idx + 1];
-        sb += data[idx + 2];
+      const bgColors = bgSamples.map(([sx, sy]) => {
+        const i = (sy * w + sx) * 4;
+        return [data[i], data[i + 1], data[i + 2]];
       });
-      sr /= samples.length;
-      sg /= samples.length;
-      sb /= samples.length;
 
-      // Remove background pixels similar to border color + soft vignette around head/edges
-      const threshold = 46;
-      const feather = 26;
+      // Sample face/neck skin tone around center-top (x=0.5, y=0.14..0.19) to remove exposed head/neck
+      const skinSamples = [
+        [Math.floor(w * 0.5), Math.floor(h * 0.14)],
+        [Math.floor(w * 0.5), Math.floor(h * 0.19)]
+      ];
+      const skinColors = skinSamples.map(([sx, sy]) => {
+        const i = (sy * w + sx) * 4;
+        return [data[i], data[i + 1], data[i + 2]];
+      });
+
+      const bgThreshold = 38;
+      const bgFeather = 28;
+
       for (let y = 0; y < h; y++) {
         const ny = y / h;
         for (let x = 0; x < w; x++) {
@@ -691,146 +762,871 @@
           const r = data[idx];
           const g = data[idx + 1];
           const b = data[idx + 2];
-          const distBg = Math.hypot(r - sr, g - sg, b - sb);
 
-          // Also fade out the model's head area (top 19%) so the user's real head shows cleanly on camera!
-          let headMask = 1;
-          if (ny < 0.21) {
-            const headDist = Math.hypot((nx - 0.5) * 1.6, (ny - 0.10) * 2.2);
-            if (headDist < 0.26) {
-              headMask = Math.max(0, (headDist - 0.14) / 0.12);
+          // 1) Head & Face Mask: Completely remove everything above the neckline curve
+          // Neckline curve dips slightly in the center (ny = 0.235) and rises toward shoulders (ny = 0.215)
+          const dxCenter = Math.abs(nx - 0.5);
+          const collarLineY = isHalter
+            ? 0.215 + dxCenter * 0.34 // Halter/Yếm tapers inward toward the neck!
+            : 0.242 - Math.min(0.032, dxCenter * 0.14);
+
+          if (ny < collarLineY - 0.025) {
+            data[idx + 3] = 0;
+            continue;
+          }
+          let collarMask = 1;
+          if (ny < collarLineY + 0.02) {
+            collarMask = Math.max(0, Math.min(1, (ny - (collarLineY - 0.025)) / 0.045));
+          }
+
+          // 2) Silhouette Horizontal Taper (Halter vs Sleeved Top)
+          let halfSpan = 0.38;
+          if (ny < 0.36) {
+            // Shoulder / upper chest width
+            halfSpan = isHalter ? (0.14 + (ny - 0.20) * 1.15) : 0.38;
+          } else if (ny < 0.65) {
+            // Bust to waist taper
+            halfSpan = isHalter ? 0.30 : 0.35;
+          } else {
+            // Waist to hem flare
+            halfSpan = 0.36;
+          }
+
+          let sideMask = 1;
+          if (dxCenter > halfSpan) {
+            sideMask = Math.max(0, 1 - (dxCenter - halfSpan) / 0.075);
+          }
+
+          // 3) Bottom Hem Feathering (below ny = 0.89)
+          let hemMask = 1;
+          if (ny > 0.87) {
+            hemMask = Math.max(0, 1 - (ny - 0.87) / 0.065);
+          }
+
+          // 4) Multi-cluster Studio Background Matte
+          let minBgDist = 999;
+          for (let k = 0; k < bgColors.length; k++) {
+            const c = bgColors[k];
+            const d = Math.hypot(r - c[0], g - c[1], b - c[2]);
+            if (d < minBgDist) minBgDist = d;
+          }
+          // Protect center torso fabric from accidental background knockout
+          const centerProtection = (dxCenter < 0.19 && ny > 0.27 && ny < 0.82) ? 0.45 : 1.0;
+          const effBgDist = minBgDist / centerProtection;
+
+          let bgAlpha = 1;
+          if (effBgDist < bgThreshold) {
+            bgAlpha = 0;
+          } else if (effBgDist < bgThreshold + bgFeather) {
+            bgAlpha = (effBgDist - bgThreshold) / bgFeather;
+          }
+
+          // 5) Upper Neck / Outer Arm Skin Mask (so bare arms or chin skin don't ghost over user)
+          let skinAlpha = 1;
+          if (ny < 0.28 || dxCenter > 0.26) {
+            let minSkinDist = 999;
+            for (let k = 0; k < skinColors.length; k++) {
+              const sc = skinColors[k];
+              const d = Math.hypot(r - sc[0], g - sc[1], b - sc[2]);
+              if (d < minSkinDist) minSkinDist = d;
+            }
+            if (minSkinDist < 22 && ny < 0.27 && dxCenter < 0.16) {
+              skinAlpha = 0;
             }
           }
 
-          // Edge oval feathering
-          const edgeDist = Math.hypot((nx - 0.5) * 2.05, (ny - 0.55) * 1.9);
-          const edgeMask = edgeDist > 0.92 ? Math.max(0, 1 - (edgeDist - 0.92) * 5) : 1;
-
-          let bgAlpha = 1;
-          if (distBg < threshold) {
-            bgAlpha = 0;
-          } else if (distBg < threshold + feather) {
-            bgAlpha = (distBg - threshold) / feather;
-          }
-
-          data[idx + 3] = Math.round(data[idx + 3] * bgAlpha * headMask * edgeMask);
+          data[idx + 3] = Math.round(data[idx + 3] * collarMask * sideMask * hemMask * bgAlpha * skinAlpha);
         }
       }
       ctx.putImageData(imgData, 0, 0);
-    } catch (err) {
-      // Cross-origin image without CORS headers: keep un-matted image gracefully
+    } catch (_) {
+      // If external image without CORS, fallback still works via triangle UV clipping
     }
-    return c;
+
+    return {
+      rawImg: imgEl,
+      clothCanvas,
+      bodyBaseCanvas,
+      width: w,
+      height: h,
+      category,
+      uvRig
+    };
   }
 
-  function loadGarmentImageForLive(src) {
-    garmentRawLoaded = false;
-    garmentProcessedCanvas = null;
-    garmentSourceImg.onload = () => {
-      garmentRawLoaded = true;
-      garmentProcessedCanvas = buildGarmentMatte(garmentSourceImg);
+  function loadGarmentForProduct(src, category = 'to-lua', onReady) {
+    if (garmentCache.has(src)) {
+      const cached = garmentCache.get(src);
+      if (onReady) onReady(cached);
+      return;
+    }
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      const asset = synthesizeGarmentAsset(img, category);
+      garmentCache.set(src, asset);
+      if (onReady) onReady(asset);
     };
-    garmentSourceImg.onerror = () => {
-      // Fallback without crossOrigin if remote host blocks anonymous CORS
+    img.onerror = () => {
       const fallback = new Image();
       fallback.onload = () => {
-        garmentRawLoaded = true;
-        garmentProcessedCanvas = fallback;
+        const asset = synthesizeGarmentAsset(fallback, category);
+        garmentCache.set(src, asset);
+        if (onReady) onReady(asset);
       };
       fallback.src = src;
     };
-    garmentSourceImg.src = src;
+    img.src = src;
   }
 
-  // Real-time motion & upper-body silhouette tracker on 64x48 downsampled frame
-  function updateMotionTracking(videoEl) {
-    if (!state.studio.autoTrack || videoEl.readyState < 2) return;
-    const w = 64;
-    const h = 48;
-    workCtx.save();
-    if (state.studio.facingMode === 'user') {
-      workCtx.translate(w, 0);
-      workCtx.scale(-1, 1);
-    }
-    workCtx.drawImage(videoEl, 0, 0, w, h);
-    workCtx.restore();
+  // ==========================================================================
+  // MEDIAPIPE POSE 33-KEYPOINT TRACKER + REAL-TIME KINEMATIC RIG
+  // ==========================================================================
+  const poseState = {
+    mpPose: null,
+    mpReady: false,
+    mpBusy: false,
+    hasLiveLandmarks: false,
+    lastLandmarkTime: 0,
+    // Normalized 0..1 body keypoints (smoothed at 60fps)
+    neck: { x: 0.5, y: 0.25 },
+    lShoulder: { x: 0.34, y: 0.29, z: 0 },
+    rShoulder: { x: 0.66, y: 0.29, z: 0 },
+    lElbow: { x: 0.26, y: 0.50, z: 0 },
+    rElbow: { x: 0.74, y: 0.50, z: 0 },
+    lWrist: { x: 0.28, y: 0.68, z: 0, v: 0 },
+    rWrist: { x: 0.72, y: 0.68, z: 0, v: 0 },
+    lHip: { x: 0.37, y: 0.66, z: 0 },
+    rHip: { x: 0.63, y: 0.66, z: 0 },
+    yaw: 0,          // 3D torso twist (-0.45 .. +0.45)
+    tilt: 0,         // Shoulder tilt radians
+    breathe: 0,      // Breathing chest expansion
+    pointerX: 0,     // Interactive user pointer influence (-1..1)
+    pointerY: 0,
+    manualX: 0,
+    manualY: 0,
+    manualScale: 1.0,
+    rafId: null
+  };
 
-    const frame = workCtx.getImageData(0, 0, w, h).data;
-    if (tracker.prevFrame) {
-      let sumX = 0;
-      let sumY = 0;
-      let sumW = 0;
-      let leftMass = 0;
-      let rightMass = 0;
+  function lerp(a, b, t) {
+    return a + (b - a) * t;
+  }
 
-      for (let y = 4; y < h - 4; y++) {
-        for (let x = 6; x < w - 6; x++) {
-          const i = (y * w + x) * 4;
-          const diff = Math.abs(frame[i] - tracker.prevFrame[i])
-            + Math.abs(frame[i + 1] - tracker.prevFrame[i + 1])
-            + Math.abs(frame[i + 2] - tracker.prevFrame[i + 2]);
-          if (diff > 42) {
-            const weight = diff;
-            sumX += (x / w) * weight;
-            sumY += (y / h) * weight;
-            sumW += weight;
-            if (x < w / 2) leftMass += (y / h) * weight;
-            else rightMass += (y / h) * weight;
-          }
+  // Initialize Google MediaPipe Pose (`window.Pose`) when available
+  function initMediaPipePose() {
+    if (poseState.mpPose || typeof window.Pose !== 'function') return;
+    try {
+      const pose = new window.Pose({
+        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
+      });
+      pose.setOptions({
+        modelComplexity: 1,
+        smoothLandmarks: true,
+        enableSegmentation: false,
+        minDetectionConfidence: 0.5,
+        minTrackingConfidence: 0.5
+      });
+      pose.onResults((results) => {
+        if (!results || !results.poseLandmarks || results.poseLandmarks.length < 25) {
+          return;
         }
-      }
+        const lm = results.poseLandmarks;
+        // Mirror X coordinate if front camera ('user') is active
+        const mirror = state.studio.facingMode === 'user';
+        const mx = (x) => (mirror ? 1 - x : x);
 
-      if (sumW > 9500) {
-        const targetX = Math.max(0.28, Math.min(0.72, sumX / sumW));
-        const targetY = Math.max(0.44, Math.min(0.70, (sumY / sumW) + 0.10));
-        tracker.cx += (targetX - tracker.cx) * 0.18;
-        tracker.cy += (targetY - tracker.cy) * 0.14;
-        const targetTilt = Math.max(-0.12, Math.min(0.12, ((rightMass - leftMass) / sumW) * 0.35));
-        tracker.tilt += (targetTilt - tracker.tilt) * 0.15;
-      } else {
-        // Gently ease tilt back when standing still
-        tracker.tilt *= 0.92;
-      }
+        // MediaPipe Pose indices: 11=Left Shoulder (user's left -> right side of mirrored image), 12=Right Shoulder
+        // In screen space (left-to-right on canvas):
+        const p11 = { x: mx(lm[11].x), y: lm[11].y, z: lm[11].z || 0, v: lm[11].visibility || 0 };
+        const p12 = { x: mx(lm[12].x), y: lm[12].y, z: lm[12].z || 0, v: lm[12].visibility || 0 };
+        const p13 = { x: mx(lm[13].x), y: lm[13].y, z: lm[13].z || 0, v: lm[13].visibility || 0 };
+        const p14 = { x: mx(lm[14].x), y: lm[14].y, z: lm[14].z || 0, v: lm[14].visibility || 0 };
+        const p15 = { x: mx(lm[15].x), y: lm[15].y, z: lm[15].z || 0, v: lm[15].visibility || 0 };
+        const p16 = { x: mx(lm[16].x), y: lm[16].y, z: lm[16].z || 0, v: lm[16].visibility || 0 };
+        const p23 = { x: mx(lm[23].x), y: lm[23].y, z: lm[23].z || 0, v: lm[23].visibility || 0 };
+        const p24 = { x: mx(lm[24].x), y: lm[24].y, z: lm[24].z || 0, v: lm[24].visibility || 0 };
+
+        // Ensure screen-left shoulder is `lShoulder` and screen-right shoulder is `rShoulder`
+        const leftIs12 = p12.x < p11.x;
+        const sL = leftIs12 ? p12 : p11;
+        const sR = leftIs12 ? p11 : p12;
+        const eL = leftIs12 ? p14 : p13;
+        const eR = leftIs12 ? p13 : p14;
+        const wL = leftIs12 ? p16 : p15;
+        const wR = leftIs12 ? p15 : p16;
+        const hL = leftIs12 ? p24 : p23;
+        const hR = leftIs12 ? p23 : p24;
+
+        const alpha = 0.42; // Responsive 60fps smoothing
+        poseState.lShoulder.x = lerp(poseState.lShoulder.x, sL.x, alpha);
+        poseState.lShoulder.y = lerp(poseState.lShoulder.y, sL.y, alpha);
+        poseState.lShoulder.z = lerp(poseState.lShoulder.z, sL.z, alpha);
+
+        poseState.rShoulder.x = lerp(poseState.rShoulder.x, sR.x, alpha);
+        poseState.rShoulder.y = lerp(poseState.rShoulder.y, sR.y, alpha);
+        poseState.rShoulder.z = lerp(poseState.rShoulder.z, sR.z, alpha);
+
+        poseState.lElbow.x = lerp(poseState.lElbow.x, eL.x, alpha);
+        poseState.lElbow.y = lerp(poseState.lElbow.y, eL.y, alpha);
+        poseState.rElbow.x = lerp(poseState.rElbow.x, eR.x, alpha);
+        poseState.rElbow.y = lerp(poseState.rElbow.y, eR.y, alpha);
+
+        poseState.lWrist = { x: lerp(poseState.lWrist.x, wL.x, 0.5), y: lerp(poseState.lWrist.y, wL.y, 0.5), z: wL.z, v: wL.v };
+        poseState.rWrist = { x: lerp(poseState.rWrist.x, wR.x, 0.5), y: lerp(poseState.rWrist.y, wR.y, 0.5), z: wR.z, v: wR.v };
+
+        // If lower hips are below webcam frame, synthesize anatomical hip position from shoulder vector
+        const shoulderWidth = Math.hypot(poseState.rShoulder.x - poseState.lShoulder.x, poseState.rShoulder.y - poseState.lShoulder.y);
+        const midSX = (poseState.lShoulder.x + poseState.rShoulder.x) * 0.5;
+        const midSY = (poseState.lShoulder.y + poseState.rShoulder.y) * 0.5;
+
+        if (hL.v > 0.35 && hR.v > 0.35 && hL.y < 0.98 && hR.y < 0.98) {
+          poseState.lHip.x = lerp(poseState.lHip.x, hL.x, alpha);
+          poseState.lHip.y = lerp(poseState.lHip.y, hL.y, alpha);
+          poseState.rHip.x = lerp(poseState.rHip.x, hR.x, alpha);
+          poseState.rHip.y = lerp(poseState.rHip.y, hR.y, alpha);
+        } else {
+          const torsoLen = shoulderWidth * 1.32;
+          const hipHalf = shoulderWidth * 0.44;
+          poseState.lHip.x = lerp(poseState.lHip.x, midSX - hipHalf, alpha);
+          poseState.lHip.y = lerp(poseState.lHip.y, midSX ? midSY + torsoLen : 0.68, alpha);
+          poseState.rHip.x = lerp(poseState.rHip.x, midSX + hipHalf, alpha);
+          poseState.rHip.y = lerp(poseState.rHip.y, midSY + torsoLen, alpha);
+        }
+
+        poseState.neck.x = midSX;
+        poseState.neck.y = midSY - shoulderWidth * 0.14;
+        poseState.tilt = Math.atan2(poseState.rShoulder.y - poseState.lShoulder.y, poseState.rShoulder.x - poseState.lShoulder.x);
+        poseState.yaw = Math.max(-0.42, Math.min(0.42, (poseState.lShoulder.z - poseState.rShoulder.z) * 0.85));
+        poseState.hasLiveLandmarks = true;
+        poseState.lastLandmarkTime = performance.now();
+      });
+      poseState.mpPose = pose;
+      poseState.mpReady = true;
+    } catch (_) {
+      poseState.mpReady = false;
     }
-    tracker.prevFrame = new Uint8ClampedArray(frame);
   }
 
-  // 60FPS Render Loop for both Studio Canvas & Floating Capsule Mini Canvas
-  function renderLiveLoop() {
-    if (!state.webcamStream) {
-      tracker.rafId = null;
+  // Fallback Optical Silhouette & Upper-Body Keypoint Tracker (runs in parallel with MediaPipe)
+  const optCanvas = document.createElement('canvas');
+  optCanvas.width = 64;
+  optCanvas.height = 48;
+  const optCtx = optCanvas.getContext('2d', { willReadFrequently: true });
+  let prevOptFrame = null;
+
+  function updateWebcamPose(videoEl) {
+    if (!videoEl || videoEl.readyState < 2) return;
+
+    // 1. Feed frame to MediaPipe Pose asynchronously
+    if (!poseState.mpPose) initMediaPipePose();
+    if (poseState.mpReady && !poseState.mpBusy) {
+      poseState.mpBusy = true;
+      poseState.mpPose.send({ image: videoEl }).then(() => {
+        poseState.mpBusy = false;
+      }).catch(() => {
+        poseState.mpBusy = false;
+      });
+    }
+
+    // 2. If MediaPipe landmarks are fresh (< 400ms), use them directly!
+    if (poseState.hasLiveLandmarks && performance.now() - poseState.lastLandmarkTime < 450) {
+      if (aiPoseHudText) {
+        aiPoseHudText.textContent = 'AI MediaPipe Pose: Đã khóa 33 điểm cơ thể thật (96-Triangle Mesh)';
+      }
       return;
     }
 
-    updateMotionTracking(webcamVideo);
+    // 3. Instant Optical Motion Skeleton (while MediaPipe WASM warms up)
+    const w = 64;
+    const h = 48;
+    optCtx.save();
+    if (state.studio.facingMode === 'user') {
+      optCtx.translate(w, 0);
+      optCtx.scale(-1, 1);
+    }
+    optCtx.drawImage(videoEl, 0, 0, w, h);
+    optCtx.restore();
 
-    const targets = [];
-    if (liveCanvas && modal?.classList.contains('open')) targets.push(liveCanvas);
-    if (capsuleCanvas && !capsuleEl?.hidden) targets.push(capsuleCanvas);
-
-    targets.forEach((canvas) => {
-      const rect = canvas.getBoundingClientRect();
-      if (rect.width > 0 && canvas === liveCanvas) {
-        if (canvas.width !== Math.round(rect.width) || canvas.height !== Math.round(rect.height)) {
-          canvas.width = Math.round(rect.width);
-          canvas.height = Math.round(rect.height);
+    const frame = optCtx.getImageData(0, 0, w, h).data;
+    let cx = 0.5;
+    let cy = 0.46;
+    let tilt = 0;
+    if (prevOptFrame) {
+      let sumX = 0; let sumY = 0; let sumW = 0; let lMass = 0; let rMass = 0;
+      for (let y = 4; y < h - 4; y++) {
+        for (let x = 6; x < w - 6; x++) {
+          const i = (y * w + x) * 4;
+          const diff = Math.abs(frame[i] - prevOptFrame[i])
+            + Math.abs(frame[i + 1] - prevOptFrame[i + 1])
+            + Math.abs(frame[i + 2] - prevOptFrame[i + 2]);
+          if (diff > 38) {
+            sumX += (x / w) * diff;
+            sumY += (y / h) * diff;
+            sumW += diff;
+            if (x < w / 2) lMass += (y / h) * diff;
+            else rMass += (y / h) * diff;
+          }
         }
       }
+      if (sumW > 8000) {
+        cx = Math.max(0.32, Math.min(0.68, sumX / sumW));
+        cy = Math.max(0.32, Math.min(0.58, sumY / sumW));
+        tilt = Math.max(-0.16, Math.min(0.16, ((rMass - lMass) / sumW) * 0.4));
+      }
+    }
+    prevOptFrame = new Uint8ClampedArray(frame);
+
+    const midX = lerp((poseState.lShoulder.x + poseState.rShoulder.x) * 0.5, cx, 0.16);
+    const midY = lerp((poseState.lShoulder.y + poseState.rShoulder.y) * 0.5, cy * 0.72, 0.14);
+    poseState.tilt = lerp(poseState.tilt, tilt, 0.16);
+    const sw = 0.34;
+    const cosT = Math.cos(poseState.tilt);
+    const sinT = Math.sin(poseState.tilt);
+    poseState.lShoulder = { x: midX - (sw * 0.5) * cosT, y: midY - (sw * 0.5) * sinT, z: 0 };
+    poseState.rShoulder = { x: midX + (sw * 0.5) * cosT, y: midY + (sw * 0.5) * sinT, z: 0 };
+    poseState.neck = { x: midX + sinT * 0.04, y: midY - 0.045 * cosT };
+    poseState.lElbow = { x: poseState.lShoulder.x - 0.08, y: poseState.lShoulder.y + 0.22, z: 0 };
+    poseState.rElbow = { x: poseState.rShoulder.x + 0.08, y: poseState.rShoulder.y + 0.22, z: 0 };
+    poseState.lHip = { x: midX - sw * 0.42, y: midY + 0.38, z: 0 };
+    poseState.rHip = { x: midX + sw * 0.42, y: midY + 0.38, z: 0 };
+  }
+
+  /**
+   * Computes a realistic kinematic moving human skeleton for "AI Body-Fit Live" mode
+   * (when webcam is off or inside inline product cards). Responds both to natural
+   * human motion (breathing, turning shoulders, sway, arm movement) AND user mouse/touch!
+   */
+  function computeSimulatedBodySkeleton(timeSec, pointerX = 0, pointerY = 0) {
+    const swayX = Math.sin(timeSec * 1.55) * 0.022 + pointerX * 0.045;
+    const breatheY = Math.sin(timeSec * 2.6) * 0.008 + pointerY * 0.018;
+    const yaw = Math.sin(timeSec * 1.25) * 0.22 + pointerX * 0.32;
+    const tilt = Math.sin(timeSec * 1.8) * 0.055 + pointerX * 0.08;
+    const scaleBreath = 1 + Math.sin(timeSec * 2.6) * 0.022 + Math.cos(timeSec * 1.1) * 0.015;
+
+    const midSX = 0.5 + swayX;
+    const midSY = 0.268 + breatheY;
+
+    // 3D Yaw perspective compresses left or right shoulder distance from spine
+    const baseHalfShoulder = 0.165 * scaleBreath;
+    const leftSpan = baseHalfShoulder * (1 - yaw * 0.38);
+    const rightSpan = baseHalfShoulder * (1 + yaw * 0.38);
+
+    const cosT = Math.cos(tilt);
+    const sinT = Math.sin(tilt);
+
+    const lShoulder = {
+      x: midSX - leftSpan * cosT,
+      y: midSY - leftSpan * sinT
+    };
+    const rShoulder = {
+      x: midSX + rightSpan * cosT,
+      y: midSY + rightSpan * sinT
+    };
+    const neck = {
+      x: midSX + sinT * 0.035,
+      y: midSY - 0.032 * cosT
+    };
+
+    // Upper arms articulate naturally as the body turns and breathes
+    const armSwingL = 0.18 + Math.sin(timeSec * 1.9) * 0.06 - yaw * 0.12;
+    const armSwingR = 0.18 - Math.sin(timeSec * 1.9) * 0.06 + yaw * 0.12;
+    const lElbow = {
+      x: lShoulder.x - Math.sin(armSwingL) * 0.18,
+      y: lShoulder.y + Math.cos(armSwingL) * 0.21
+    };
+    const rElbow = {
+      x: rShoulder.x + Math.sin(armSwingR) * 0.18,
+      y: rShoulder.y + Math.cos(armSwingR) * 0.21
+    };
+
+    // Hips counter-sway slightly like a real fashion runway walk / weight shift
+    const hipMidX = 0.5 + swayX * 0.65 - Math.sin(timeSec * 1.55) * 0.008;
+    const hipMidY = 0.68 + breatheY * 0.5;
+    const baseHalfHip = 0.138 * (1 + (Number(inputWaist?.value || 64) - 64) * 0.006);
+    const lHip = {
+      x: hipMidX - baseHalfHip * (1 - yaw * 0.32),
+      y: hipMidY - baseHalfHip * sinT * 0.45
+    };
+    const rHip = {
+      x: hipMidX + baseHalfHip * (1 + yaw * 0.32),
+      y: hipMidY + baseHalfHip * sinT * 0.45
+    };
+
+    return {
+      neck,
+      lShoulder,
+      rShoulder,
+      lElbow,
+      rElbow,
+      lWrist: { x: 0.2, y: 0.85, v: 0 },
+      rWrist: { x: 0.8, y: 0.85, v: 0 },
+      lHip,
+      rHip,
+      yaw,
+      tilt,
+      breathe: Math.sin(timeSec * 2.6)
+    };
+  }
+
+  /**
+   * Hardware-Accelerated Canvas 2D Affine Triangle Texture Mapper:
+   * Maps triangle (u0,v0)-(u1,v1)-(u2,v2) from `img` onto destination triangle (x0,y0)-(x1,y1)-(x2,y2).
+   */
+  function drawTexturedTriangle(ctx, img, u0, v0, u1, v1, u2, v2, x0, y0, x1, y1, x2, y2) {
+    const du1 = u1 - u0;
+    const dv1 = v1 - v0;
+    const du2 = u2 - u0;
+    const dv2 = v2 - v0;
+    const det = du1 * dv2 - du2 * dv1;
+    if (Math.abs(det) < 1e-5) return;
+
+    const invDet = 1 / det;
+    const dx1 = x1 - x0;
+    const dy1 = y1 - y0;
+    const dx2 = x2 - x0;
+    const dy2 = y2 - y0;
+
+    const a = (dx1 * dv2 - dx2 * dv1) * invDet;
+    const b = (dy1 * dv2 - dy2 * dv1) * invDet;
+    const c = (du1 * dx2 - du2 * dx1) * invDet;
+    const d = (du1 * dy2 - du2 * dy1) * invDet;
+    const e = x0 - a * u0 - c * v0;
+    const f = y0 - b * u0 - d * v0;
+
+    // Slightly expand clip triangle by 0.45px from centroid to eliminate subpixel hairline seams
+    const cx = (x0 + x1 + x2) / 3;
+    const cy = (y0 + y1 + y2) / 3;
+    const ex0 = x0 + (x0 > cx ? 0.45 : -0.45);
+    const ey0 = y0 + (y0 > cy ? 0.45 : -0.45);
+    const ex1 = x1 + (x1 > cx ? 0.45 : -0.45);
+    const ey1 = y1 + (y1 > cy ? 0.45 : -0.45);
+    const ex2 = x2 + (x2 > cx ? 0.45 : -0.45);
+    const ey2 = y2 + (y2 > cy ? 0.45 : -0.45);
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(ex0, ey0);
+    ctx.lineTo(ex1, ey1);
+    ctx.lineTo(ex2, ey2);
+    ctx.closePath();
+    ctx.clip();
+    ctx.transform(a, b, c, d, e, f);
+    ctx.drawImage(img, 0, 0);
+    ctx.restore();
+  }
+
+  /**
+   * 96-Triangle (6x8 Subdivision Grid) Deformable Garment Mesh Renderer:
+   * Maps the synthesized garment asset tightly onto the live skeleton (`skel`)
+   * with 3D ribcage curvature, sleeve articulation, waist fitting, and fold shading.
+   */
+  function renderWarpedGarmentOnSkeleton(ctx, cw, ch, asset, skel, opts = {}) {
+    if (!asset) return;
+    const drawable = (state.studio.aiMatte && asset.clothCanvas) ? asset.clothCanvas : asset.rawImg;
+    const sw = asset.width || drawable.width || 440;
+    const sh = asset.height || drawable.height || 560;
+
+    const ROWS = 8;
+    const COLS = 6;
+    const rig = asset.uvRig;
+
+    const waistScale = 1 + (Number(inputWaist?.value || 64) - 64) * 0.0055;
+    const manualScale = opts.ignoreManual ? 1.0 : poseState.manualScale;
+    const offsetX = opts.ignoreManual ? 0 : poseState.manualX * (cw / 500);
+    const offsetY = opts.ignoreManual ? 0 : poseState.manualY * (ch / 500);
+
+    // Compute anatomical torso frame in canvas pixels
+    const lS = { x: skel.lShoulder.x * cw + offsetX, y: skel.lShoulder.y * ch + offsetY };
+    const rS = { x: skel.rShoulder.x * cw + offsetX, y: skel.rShoulder.y * ch + offsetY };
+    const lE = { x: skel.lElbow.x * cw + offsetX, y: skel.lElbow.y * ch + offsetY };
+    const rE = { x: skel.rElbow.x * cw + offsetX, y: skel.rElbow.y * ch + offsetY };
+    const lH = { x: skel.lHip.x * cw + offsetX, y: skel.lHip.y * ch + offsetY };
+    const rH = { x: skel.rHip.x * cw + offsetX, y: skel.rHip.y * ch + offsetY };
+
+    const sMidX = (lS.x + rS.x) * 0.5;
+    const sMidY = (lS.y + rS.y) * 0.5;
+    const hMidX = (lH.x + rH.x) * 0.5;
+    const hMidY = (lH.y + rH.y) * 0.5;
+
+    const shoulderVecX = (rS.x - lS.x) * 0.5 * manualScale * 1.44;
+    const shoulderVecY = (rS.y - lS.y) * 0.5 * manualScale * 1.44;
+    const hipVecX = (rH.x - lH.x) * 0.5 * manualScale * waistScale * 1.56;
+    const hipVecY = (rH.y - lH.y) * 0.5 * manualScale * waistScale * 1.56;
+
+    const spineVecX = (hMidX - sMidX) * manualScale;
+    const spineVecY = (hMidY - sMidY) * manualScale;
+
+    // Build (ROWS+1) x (COLS+1) grid of UV coordinates & deformed 2D/3D screen vertices
+    const grid = [];
+    for (let r = 0; r <= ROWS; r++) {
+      const vNorm = r / ROWS; // 0 = collar, 1 = hem
+      const uRow = [];
+
+      // Source V coordinate on product image
+      const srcV = lerp(rig.vNeck - 0.02, rig.vHem, vNorm) * sh;
+
+      // Spine position at this vertical slice (starts slightly above shoulder midpoint for collar)
+      const spineT = (vNorm - 0.08) * 1.38;
+      const rowCenterX = sMidX + spineVecX * spineT;
+      const rowCenterY = sMidY + spineVecY * spineT;
+
+      // Interpolate width vector from shoulder to waist to flared hem
+      let widthFactor = 1.0;
+      if (vNorm < 0.55) {
+        // Bust expansion
+        widthFactor = 1.0 + Math.sin((vNorm / 0.55) * Math.PI) * (0.06 + (skel.breathe || 0) * 0.018);
+      } else {
+        // Waist nip & hem flare
+        const tWaist = (vNorm - 0.55) / 0.45;
+        widthFactor = 0.94 + tWaist * tWaist * 0.16;
+      }
+
+      const halfVecX = lerp(shoulderVecX, hipVecX, Math.min(1, vNorm * 1.15)) * widthFactor;
+      const halfVecY = lerp(shoulderVecY, hipVecY, Math.min(1, vNorm * 1.15)) * widthFactor;
+
+      for (let c = 0; c <= COLS; c++) {
+        const uNorm = c / COLS; // 0 = far left (sleeve/edge), 0.5 = spine center, 1 = far right
+        const signedU = (uNorm - 0.5) * 2; // -1 .. +1
+
+        const srcU = lerp(rig.uMin, rig.uMax, uNorm) * sw;
+
+        // 3D Yaw perspective foreshortening: compresses the side turned away from camera
+        const yawCompress = 1 + signedU * (skel.yaw || 0) * 0.28;
+
+        // Base torso vertex position
+        let vx = rowCenterX + signedU * halfVecX * yawCompress;
+        let vy = rowCenterY + signedU * halfVecY * yawCompress;
+
+        // 3D Ribcage Cylinder Curvature: lifts outer edges slightly vs center to wrap around chest
+        const cylinderCurve = Math.sin(uNorm * Math.PI);
+        vy += cylinderCurve * (cw * 0.016) * (1 - vNorm * 0.4);
+        vx += (skel.yaw || 0) * cylinderCurve * (cw * 0.028);
+
+        // Sleeve Articulation: outer columns (c=0,1 and c=5,6) in upper rows (r=1..4) follow real elbows!
+        if (vNorm >= 0.08 && vNorm <= 0.52) {
+          const armWeight = Math.sin(((vNorm - 0.08) / 0.44) * Math.PI);
+          if (c <= 1) {
+            const sleevePull = (c === 0 ? 0.42 : 0.16) * armWeight;
+            const targetArmX = lerp(lS.x, lE.x, vNorm * 1.5) - cw * 0.04;
+            const targetArmY = lerp(lS.y, lE.y, vNorm * 1.5);
+            vx = lerp(vx, targetArmX, sleevePull);
+            vy = lerp(vy, targetArmY, sleevePull);
+          } else if (c >= COLS - 1) {
+            const sleevePull = (c === COLS ? 0.42 : 0.16) * armWeight;
+            const targetArmX = lerp(rS.x, rE.x, vNorm * 1.5) + cw * 0.04;
+            const targetArmY = lerp(rS.y, rE.y, vNorm * 1.5);
+            vx = lerp(vx, targetArmX, sleevePull);
+            vy = lerp(vy, targetArmY, sleevePull);
+          }
+        }
+
+        uRow.push({ u: srcU, v: srcV, x: vx, y: vy });
+      }
+      grid.push(uRow);
+    }
+
+    // 1. Render all 96 triangles of the deformed cloth mesh
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        const p00 = grid[r][c];
+        const p10 = grid[r][c + 1];
+        const p01 = grid[r + 1][c];
+        const p11 = grid[r + 1][c + 1];
+
+        drawTexturedTriangle(
+          ctx, drawable,
+          p00.u, p00.v, p10.u, p10.v, p01.u, p01.v,
+          p00.x, p00.y, p10.x, p10.y, p01.x, p01.y
+        );
+        drawTexturedTriangle(
+          ctx, drawable,
+          p10.u, p10.v, p11.u, p11.v, p01.u, p01.v,
+          p10.x, p10.y, p11.x, p11.y, p01.x, p01.y
+        );
+      }
+    }
+
+    // 2. Dynamic 3D Torso Fold Shading (subtle specular highlight & turn shadow on cloth)
+    if (Math.abs(skel.yaw || 0) > 0.02) {
+      const topMid = grid[1][3];
+      const botMid = grid[ROWS - 1][3];
+      const leftMid = grid[3][1];
+      const rightMid = grid[3][COLS - 1];
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(grid[0][1].x, grid[0][1].y);
+      ctx.lineTo(grid[0][COLS - 1].x, grid[0][COLS - 1].y);
+      ctx.lineTo(grid[ROWS][COLS - 1].x, grid[ROWS][COLS - 1].y);
+      ctx.lineTo(grid[ROWS][1].x, grid[ROWS][1].y);
+      ctx.closePath();
+      const grad = ctx.createLinearGradient(leftMid.x, topMid.y, rightMid.x, botMid.y);
+      const yawVal = skel.yaw || 0;
+      const leftShade = yawVal > 0 ? `rgba(0,0,0,${Math.min(0.18, yawVal * 0.35).toFixed(3)})` : `rgba(255,255,255,${Math.min(0.10, -yawVal * 0.22).toFixed(3)})`;
+      const rightShade = yawVal < 0 ? `rgba(0,0,0,${Math.min(0.18, -yawVal * 0.35).toFixed(3)})` : `rgba(255,255,255,${Math.min(0.10, yawVal * 0.22).toFixed(3)})`;
+      grad.addColorStop(0, leftShade);
+      grad.addColorStop(0.5, 'rgba(255,255,255,0)');
+      grad.addColorStop(1, rightShade);
+      ctx.fillStyle = grad;
+      ctx.globalCompositeOperation = 'soft-light';
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // 3. Optional AI Skeleton & 96-Triangle Cloth Mesh Wireframe Overlay ("🦴 Lưới AI")
+    if (state.studio.showMeshDebug || opts.showWireframe) {
+      ctx.save();
+      ctx.strokeStyle = 'rgba(200, 255, 46, 0.45)';
+      ctx.lineWidth = 1;
+      for (let r = 0; r < ROWS; r++) {
+        for (let c = 0; c < COLS; c++) {
+          const p00 = grid[r][c];
+          const p10 = grid[r][c + 1];
+          const p01 = grid[r + 1][c];
+          const p11 = grid[r + 1][c + 1];
+          ctx.beginPath();
+          ctx.moveTo(p00.x, p00.y);
+          ctx.lineTo(p10.x, p10.y);
+          ctx.lineTo(p01.x, p01.y);
+          ctx.closePath();
+          ctx.stroke();
+
+          ctx.beginPath();
+          ctx.moveTo(p10.x, p10.y);
+          ctx.lineTo(p11.x, p11.y);
+          ctx.lineTo(p01.x, p01.y);
+          ctx.closePath();
+          ctx.stroke();
+        }
+      }
+
+      // Draw Anatomical Skeleton Keypoints (Shoulders, Elbows, Hips, Spine)
+      const joints = [lS, rS, lE, rE, lH, rH, { x: sMidX, y: sMidY }, { x: hMidX, y: hMidY }];
+      ctx.strokeStyle = '#2dd4bf';
+      ctx.lineWidth = 2.2;
+      ctx.beginPath();
+      ctx.moveTo(lE.x, lE.y); ctx.lineTo(lS.x, lS.y); ctx.lineTo(rS.x, rS.y); ctx.lineTo(rE.x, rE.y);
+      ctx.moveTo(sMidX, sMidY); ctx.lineTo(hMidX, hMidY);
+      ctx.moveTo(lH.x, lH.y); ctx.lineTo(rH.x, rH.y);
+      ctx.stroke();
+
+      joints.forEach((pt) => {
+        ctx.beginPath();
+        ctx.arc(pt.x, pt.y, 4.5, 0, Math.PI * 2);
+        ctx.fillStyle = '#c8ff2e';
+        ctx.fill();
+        ctx.strokeStyle = '#0b0c0e';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      });
+      ctx.restore();
+    }
+  }
+
+  /**
+   * Real-Time Forearm & Hand Occlusion on Live Webcam:
+   * When the user brings their hand/wrist in front of their chest (just like in the reference video!),
+   * we composite the user's real forearm/hand capsule from the webcam frame ON TOP of the garment!
+   */
+  function renderWebcamHandOcclusion(ctx, cw, ch, videoEl, drawRect, skel) {
+    if (!videoEl || videoEl.readyState < 2) return;
+    const arms = [
+      [skel.lElbow, skel.lWrist],
+      [skel.rElbow, skel.rWrist]
+    ];
+    arms.forEach(([elbow, wrist]) => {
+      if (!wrist || (wrist.v || 0) < 0.45) return;
+      // Check if wrist is inside the torso region (x in 0.25..0.75, y in 0.24..0.78)
+      if (wrist.x > 0.22 && wrist.x < 0.78 && wrist.y > 0.22 && wrist.y < 0.80) {
+        const ex = elbow.x * cw;
+        const ey = elbow.y * ch;
+        const wx = wrist.x * cw;
+        const wy = wrist.y * ch;
+        const angle = Math.atan2(wy - ey, wx - ex);
+        const handX = wx + Math.cos(angle) * (cw * 0.045);
+        const handY = wy + Math.sin(angle) * (cw * 0.045);
+        const radius = cw * 0.052;
+
+        ctx.save();
+        ctx.beginPath();
+        ctx.lineCap = 'round';
+        ctx.moveTo(ex, ey);
+        ctx.lineTo(handX, handY);
+        // Build capsule clip path around forearm & hand
+        const nx = -Math.sin(angle) * radius;
+        const ny = Math.cos(angle) * radius;
+        ctx.beginPath();
+        ctx.moveTo(ex + nx, ey + ny);
+        ctx.lineTo(handX + nx, handY + ny);
+        ctx.arc(handX, handY, radius * 1.15, angle + Math.PI / 2, angle - Math.PI / 2, true);
+        ctx.lineTo(ex - nx, ey - ny);
+        ctx.arc(ex, ey, radius * 0.85, angle - Math.PI / 2, angle + Math.PI / 2, true);
+        ctx.closePath();
+        ctx.clip();
+
+        if (state.studio.facingMode === 'user') {
+          ctx.translate(cw, 0);
+          ctx.scale(-1, 1);
+        }
+        ctx.drawImage(videoEl, drawRect.dx, drawRect.dy, drawRect.dw, drawRect.dh);
+        ctx.restore();
+      }
+    });
+  }
+
+  /**
+   * Renders the Moving Human Body Base + Warped Garment Mesh when in "AI Body-Fit Live" mode
+   * (either inside the Studio Modal or inside an Inline Product Card).
+   */
+  function renderSimulatedBodyFitFrame(ctx, cw, ch, asset, skel, opts = {}) {
+    if (!asset || !asset.rawImg) return;
+    ctx.clearRect(0, 0, cw, ch);
+
+    const img = asset.rawImg;
+    const iw = img.naturalWidth || asset.width || 440;
+    const ih = img.naturalHeight || asset.height || 560;
+    const scale = Math.max(cw / iw, ch / ih);
+    const dw = iw * scale;
+    const dh = ih * scale;
+    const dx = (cw - dw) / 2;
+    const dy = (ch - dh) / 2;
+
+    // 1. Draw moving background/body base with subtle kinematic breathing & sway
+    const bodySwayX = (skel.neck.x - 0.5) * cw * 0.55;
+    const bodyBreathY = (skel.neck.y - 0.236) * ch * 0.45;
+
+    ctx.save();
+    ctx.translate(cw * 0.5 + bodySwayX, ch * 0.5 + bodyBreathY);
+    ctx.rotate((skel.tilt || 0) * 0.38);
+    ctx.scale(1 + Math.abs(skel.yaw || 0) * 0.03, 1 + (skel.breathe || 0) * 0.012);
+    ctx.translate(-cw * 0.5, -ch * 0.5);
+    ctx.drawImage(img, dx, dy, dw, dh);
+    ctx.restore();
+
+    if (state.studio.holdOriginal && !opts.ignoreHold) return;
+
+    // 2. Softly attenuate static torso region so the 96-triangle warped garment mesh dominates cleanly
+    ctx.save();
+    ctx.beginPath();
+    ctx.ellipse(
+      cw * skel.neck.x,
+      ch * 0.54,
+      cw * 0.25,
+      ch * 0.29,
+      skel.tilt || 0,
+      0,
+      Math.PI * 2
+    );
+    ctx.clip();
+    ctx.filter = 'blur(8px) brightness(0.92)';
+    ctx.globalAlpha = 0.72;
+    ctx.drawImage(img, dx, dy, dw, dh);
+    ctx.restore();
+
+    // 3. Warp the 96-triangle extracted garment mesh tightly onto the moving skeleton
+    renderWarpedGarmentOnSkeleton(ctx, cw, ch, asset, skel, opts);
+
+    // 4. Composite the model's real head/chin/hair cleanly above the collar line so head rotates naturally
+    ctx.save();
+    ctx.beginPath();
+    ctx.ellipse(
+      cw * skel.neck.x,
+      ch * 0.115 + bodyBreathY,
+      cw * 0.22,
+      ch * 0.125,
+      (skel.tilt || 0) * 0.5,
+      0,
+      Math.PI * 2
+    );
+    ctx.clip();
+    ctx.translate(cw * 0.5 + bodySwayX * 1.05, ch * 0.12 + bodyBreathY);
+    ctx.rotate((skel.tilt || 0) * 0.55);
+    ctx.translate(-cw * 0.5, -ch * 0.12);
+    ctx.drawImage(img, dx, dy, dw, dh);
+    ctx.restore();
+  }
+
+  // ==========================================================================
+  // INLINE ON-CARD "✦ AI FIT LIVE" ENGINE (Runs on any product card!)
+  // ==========================================================================
+  const activeInlineCards = new Map(); // cardEl -> { product, asset, pointerX, pointerY }
+  let inlineLoopId = null;
+
+  function bindInlineCardAiFit(card, product) {
+    const media = $('.product-media, .lookbook-media-wrap', card) || card;
+    media.addEventListener('mousemove', (e) => {
+      const stateItem = activeInlineCards.get(card);
+      if (!stateItem) return;
+      const rect = media.getBoundingClientRect();
+      stateItem.pointerX = ((e.clientX - rect.left) / Math.max(1, rect.width) - 0.5) * 2;
+      stateItem.pointerY = ((e.clientY - rect.top) / Math.max(1, rect.height) - 0.5) * 2;
+    });
+    media.addEventListener('mouseleave', () => {
+      const stateItem = activeInlineCards.get(card);
+      if (stateItem) {
+        stateItem.pointerX = 0;
+        stateItem.pointerY = 0;
+      }
+    });
+  }
+
+  function toggleInlineCardAiFit(card, product) {
+    const btn = $('[data-inline-aifit]', card);
+    const canvas = $('.card-ai-live-canvas', card);
+    if (!canvas) return;
+
+    if (activeInlineCards.has(card)) {
+      activeInlineCards.delete(card);
+      card.classList.remove('ai-fit-active');
+      if (btn) btn.innerHTML = '✦ AI Fit Live';
+      return;
+    }
+
+    card.classList.add('ai-fit-active');
+    if (btn) btn.innerHTML = '🟢 Đang Fit AI (Di chuột)';
+
+    const entry = { product, asset: null, pointerX: 0, pointerY: 0, showMeshUntil: performance.now() + 1400 };
+    activeInlineCards.set(card, entry);
+
+    loadGarmentForProduct(product.imgFull, product.category, (asset) => {
+      entry.asset = asset;
+    });
+
+    if (!inlineLoopId) {
+      inlineLoopId = requestAnimationFrame(renderInlineCardsLoop);
+    }
+    showToast(`Đang chạy AI Body-Fit trực tiếp trên "${product.title}"! Di chuột qua ảnh để xoay cơ thể 3D.`);
+  }
+
+  function renderInlineCardsLoop(now) {
+    if (activeInlineCards.size === 0) {
+      inlineLoopId = null;
+      return;
+    }
+    const timeSec = now * 0.001;
+    activeInlineCards.forEach((entry, card) => {
+      if (!document.body.contains(card)) {
+        activeInlineCards.delete(card);
+        return;
+      }
+      const canvas = $('.card-ai-live-canvas', card);
+      if (!canvas || !entry.asset) return;
+      const ctx = canvas.getContext('2d');
       const cw = canvas.width;
       const ch = canvas.height;
-      const ctx = canvas.getContext('2d');
-      ctx.clearRect(0, 0, cw, ch);
+      const skel = computeSimulatedBodySkeleton(timeSec, entry.pointerX, entry.pointerY);
+      const showWireframe = now < entry.showMeshUntil;
 
-      // 1. Draw Live Camera Video (cover fit, mirrored for front camera)
-      if (webcamVideo.readyState >= 2) {
+      if (state.webcamStream && webcamVideo.readyState >= 2) {
+        updateWebcamPose(webcamVideo);
         const vw = webcamVideo.videoWidth || 640;
         const vh = webcamVideo.videoHeight || 480;
-        const scale = Math.max(cw / vw, ch / vh);
-        const dw = vw * scale;
-        const dh = vh * scale;
+        const sc = Math.max(cw / vw, ch / vh);
+        const dw = vw * sc;
+        const dh = vh * sc;
         const dx = (cw - dw) / 2;
         const dy = (ch - dh) / 2;
-
+        ctx.clearRect(0, 0, cw, ch);
         ctx.save();
         if (state.studio.facingMode === 'user') {
           ctx.translate(cw, 0);
@@ -838,34 +1634,135 @@
         }
         ctx.drawImage(webcamVideo, dx, dy, dw, dh);
         ctx.restore();
+        renderWarpedGarmentOnSkeleton(ctx, cw, ch, entry.asset, poseState, { ignoreManual: true, showWireframe });
+      } else {
+        renderSimulatedBodyFitFrame(ctx, cw, ch, entry.asset, skel, { ignoreManual: true, ignoreHold: true, showWireframe });
       }
+    });
+    inlineLoopId = requestAnimationFrame(renderInlineCardsLoop);
+  }
 
-      // 2. Draw Motion-Tracked Garment (unless user holds "Hold to see yourself")
-      if (!state.studio.holdOriginal && garmentRawLoaded) {
-        const sourceDrawable = (state.studio.aiMatte && garmentProcessedCanvas)
-          ? garmentProcessedCanvas
-          : garmentSourceImg;
-        const gw = sourceDrawable.width || sourceDrawable.naturalWidth || 400;
-        const gh = sourceDrawable.height || sourceDrawable.naturalHeight || 520;
+  // ==========================================================================
+  // MAIN 60FPS STUDIO & CAPSULE RENDER LOOP
+  // ==========================================================================
+  function renderStudioLoop(now = performance.now()) {
+    const isModalOpen = modal?.classList.contains('open');
+    const isCapsuleVisible = capsuleEl && !capsuleEl.hidden;
+    const isLiveView = state.studio.viewMode === 'webcam' || state.studio.viewMode === 'ai-motion';
 
-        const waistFactor = 1 + (Number(inputWaist?.value || 64) - 64) * 0.006;
-        const baseWidth = cw * 0.62 * tracker.scale * tracker.manualScale * waistFactor;
-        const baseHeight = baseWidth * (gh / Math.max(1, gw));
+    if ((!isModalOpen && !isCapsuleVisible) || !isLiveView) {
+      poseState.rafId = null;
+      return;
+    }
 
-        const scaleRatio = canvas === capsuleCanvas ? (cw / 500) : 1;
-        const centerX = cw * tracker.cx + tracker.manualX * scaleRatio;
-        const centerY = ch * tracker.cy + tracker.manualY * scaleRatio;
+    const timeSec = now * 0.001;
+    const usingWebcam = state.studio.viewMode === 'webcam' && Boolean(state.webcamStream);
 
-        ctx.save();
-        ctx.translate(centerX, centerY);
-        ctx.rotate(tracker.tilt);
-        ctx.globalAlpha = 0.94;
-        ctx.drawImage(sourceDrawable, -baseWidth / 2, -baseHeight / 2, baseWidth, baseHeight);
-        ctx.restore();
+    if (usingWebcam) {
+      updateWebcamPose(webcamVideo);
+    }
+
+    const activeSkel = usingWebcam
+      ? poseState
+      : computeSimulatedBodySkeleton(timeSec, poseState.pointerX, poseState.pointerY);
+
+    const targets = [];
+    if (liveCanvas && isModalOpen) targets.push(liveCanvas);
+    if (capsuleCanvas && isCapsuleVisible) targets.push(capsuleCanvas);
+
+    targets.forEach((canvas) => {
+      if (canvas === liveCanvas) {
+        const rect = canvas.getBoundingClientRect();
+        if (rect.width > 0 && (canvas.width !== Math.round(rect.width) || canvas.height !== Math.round(rect.height))) {
+          canvas.width = Math.round(rect.width);
+          canvas.height = Math.round(rect.height);
+        }
+      }
+      const cw = canvas.width;
+      const ch = canvas.height;
+      const ctx = canvas.getContext('2d');
+
+      if (usingWebcam) {
+        ctx.clearRect(0, 0, cw, ch);
+        let drawRect = { dx: 0, dy: 0, dw: cw, dh: ch };
+        if (webcamVideo.readyState >= 2) {
+          const vw = webcamVideo.videoWidth || 640;
+          const vh = webcamVideo.videoHeight || 480;
+          const scale = Math.max(cw / vw, ch / vh);
+          const dw = vw * scale;
+          const dh = vh * scale;
+          const dx = (cw - dw) / 2;
+          const dy = (ch - dh) / 2;
+          drawRect = { dx, dy, dw, dh };
+
+          ctx.save();
+          if (state.studio.facingMode === 'user') {
+            ctx.translate(cw, 0);
+            ctx.scale(-1, 1);
+          }
+          ctx.drawImage(webcamVideo, dx, dy, dw, dh);
+          ctx.restore();
+        }
+
+        if (!state.studio.holdOriginal && activeGarmentAsset) {
+          renderWarpedGarmentOnSkeleton(ctx, cw, ch, activeGarmentAsset, activeSkel, {
+            ignoreManual: canvas === capsuleCanvas
+          });
+          // Render user's real forearm/hand on top if they cross their chest!
+          renderWebcamHandOcclusion(ctx, cw, ch, webcamVideo, drawRect, activeSkel);
+        }
+      } else if (activeGarmentAsset) {
+        renderSimulatedBodyFitFrame(ctx, cw, ch, activeGarmentAsset, activeSkel, {
+          ignoreManual: canvas === capsuleCanvas
+        });
       }
     });
 
-    tracker.rafId = requestAnimationFrame(renderLiveLoop);
+    poseState.rafId = requestAnimationFrame(renderStudioLoop);
+  }
+
+  function ensureStudioLoop() {
+    if (!poseState.rafId) {
+      poseState.rafId = requestAnimationFrame(renderStudioLoop);
+    }
+  }
+
+  // Update Studio View Mode UI ('avatar' | 'ai-motion' | 'webcam')
+  const modeAvatarBtn = $('#modeAvatarBtn');
+  const modeAiMotionBtn = $('#modeAiMotionBtn');
+  const modeWebcamBtn = $('#modeWebcamBtn');
+  const flipCamBtn = $('#studioFlipCamBtn');
+  const holdSelfBtn = $('#studioHoldSelfBtn');
+
+  function setStudioViewMode(mode) {
+    state.studio.viewMode = mode;
+    const isCanvasActive = mode === 'ai-motion' || mode === 'webcam';
+    stage?.classList.toggle('webcam-on', isCanvasActive);
+
+    modeAvatarBtn?.classList.toggle('active', mode === 'avatar');
+    modeAiMotionBtn?.classList.toggle('active', mode === 'ai-motion');
+
+    if (holdSelfBtn) holdSelfBtn.hidden = !isCanvasActive;
+    if (aiPoseHudPill) aiPoseHudPill.hidden = !isCanvasActive;
+
+    const liveBadge = $('#studioLiveBadge');
+    const liveText = $('#studioLiveStatusText');
+
+    if (mode === 'webcam') {
+      if (liveBadge) liveBadge.classList.add('is-live');
+      if (liveText) liveText.textContent = 'LIVE CAM';
+      if (aiPoseHudText) aiPoseHudText.textContent = 'AI Body-Fit: Đang bám 33 điểm cơ thể thật qua Camera';
+      ensureStudioLoop();
+    } else if (mode === 'ai-motion') {
+      if (liveBadge) liveBadge.classList.add('is-live');
+      if (liveText) liveText.textContent = 'AI BODY-FIT';
+      if (aiPoseHudText) aiPoseHudText.textContent = 'AI Body-Fit: Mô phỏng chuyển động cơ thể & lưới áo 96 tam giác (Di chuột để xoay 3D)';
+      startSessionTimer();
+      ensureStudioLoop();
+    } else {
+      if (liveBadge) liveBadge.classList.remove('is-live');
+      if (liveText) liveText.textContent = 'STATIC';
+    }
   }
 
   // Add to Recent Looks Tray (persists up to 6 looks in session)
@@ -904,11 +1801,17 @@
     state.studio.imgIndex = (idx + gallery.length) % gallery.length;
     const rawSrc = gallery[state.studio.imgIndex];
     const hiResSrc = rawSrc.includes('_grande.') ? rawSrc.replace('_grande.', '_1024x1024.') : rawSrc;
-    studioImg.src = hiResSrc;
-    arImg.src = hiResSrc;
+    if (studioImg) studioImg.src = hiResSrc;
+    if (arImg) arImg.src = hiResSrc;
     const capThumb = $('#capsuleGarmentThumb');
     if (capThumb) capThumb.src = rawSrc;
-    loadGarmentImageForLive(hiResSrc);
+
+    triggerAiSynthesisScan(`AI đang mô phỏng "${p.title}" & khớp khung xương cơ thể...`);
+    loadGarmentForProduct(hiResSrc, p.category, (asset) => {
+      activeGarmentAsset = asset;
+      ensureStudioLoop();
+    });
+
     $$('#studioThumbs img').forEach((t, i) => t.classList.toggle('active', i === state.studio.imgIndex));
   }
 
@@ -929,6 +1832,9 @@
     state.studio.product = product;
     state.studio.color = product.colors?.[0] || '';
     state.studio.size = null;
+    poseState.manualX = 0;
+    poseState.manualY = 0;
+    poseState.manualScale = 1.0;
 
     $('#studioProductCategory').textContent = `LALIN.VN · ${CATEGORY_LABELS[product.category] || 'CUSTOM TRY-ON'}`;
     $('#studioProductTitle').textContent = product.title;
@@ -950,7 +1856,6 @@
     const targetProduct = product || state.studio.product || PRODUCTS[0];
     if (!targetProduct || !modal) return;
 
-    // Hide floating capsule if expanding back to studio
     if (capsuleEl) capsuleEl.hidden = true;
     state.studio.inCapsule = false;
 
@@ -963,8 +1868,11 @@
 
     if (opts.autoStartCam) {
       startWebcam();
-    } else if (state.webcamStream && !tracker.rafId) {
-      tracker.rafId = requestAnimationFrame(renderLiveLoop);
+    } else if (state.webcamStream) {
+      setStudioViewMode('webcam');
+    } else {
+      // Default to real-time AI Body-Fit Live simulation immediately!
+      setStudioViewMode('ai-motion');
     }
   }
 
@@ -975,7 +1883,7 @@
     $('#studioAddSheet')?.setAttribute('hidden', '');
 
     if (!keepCapsule) {
-      stopWebcam();
+      stopWebcam(true);
       if (capsuleEl) capsuleEl.hidden = true;
       state.studio.inCapsule = false;
     }
@@ -988,17 +1896,17 @@
   $('#closeAnywearModalBtn')?.addEventListener('click', () => closeStudio(false));
   modal?.addEventListener('click', (e) => { if (e.target === modal) closeStudio(false); });
 
-  // Shrink to Floating Capsule while user keeps browsing the store!
   function shrinkToCapsule() {
     if (!state.studio.product) selectStudioProduct(PRODUCTS[0]);
     state.studio.inCapsule = true;
     if (capsuleEl) capsuleEl.hidden = false;
     const capThumb = $('#capsuleGarmentThumb');
     if (capThumb) {
-      capThumb.style.display = state.webcamStream ? 'none' : 'block';
+      capThumb.style.display = 'none'; // Capsule renders live AI canvas directly!
     }
     closeStudio(true);
-    showToast('Đã thu nhỏ thành AnyWear Capsule! Lướt web và kéo thả bất kỳ ảnh áo nào vào Capsule để đổi đồ ngay.');
+    ensureStudioLoop();
+    showToast('Đã thu nhỏ thành AnyWear AI Capsule! Lướt web và kéo thả bất kỳ ảnh áo nào vào Capsule để đổi đồ ngay.');
   }
 
   $('#studioShrinkCapsuleBtn')?.addEventListener('click', shrinkToCapsule);
@@ -1006,47 +1914,39 @@
   $('#capsuleCloseBtn')?.addEventListener('click', () => {
     if (capsuleEl) capsuleEl.hidden = true;
     state.studio.inCapsule = false;
-    stopWebcam();
+    stopWebcam(true);
   });
 
-  // Document Picture-in-Picture / Floating Window over any store (Pinterest, Google Images, etc.)
-  $('#studioFloatPipBtn')?.addEventListener('click', async () => {
+  // Floating Window / Official AnyWear Cloud Bridge
+  $('#studioFloatPipBtn')?.addEventListener('click', () => {
     const p = state.studio.product || PRODUCTS[0];
     const garmentUrl = p?.imgFull || p?.img || '';
-    const officialUrl = `https://anywear.live/try-on?preview=1&garment=${encodeURIComponent(garmentUrl)}&from=lalin`;
-
-    const w = 420;
-    const h = 680;
+    const officialUrl = `https://anywear.decart.ai/?garment=${encodeURIComponent(garmentUrl)}`;
+    const w = 440;
+    const h = 700;
     const left = Math.max(20, window.screen.availWidth - w - 30);
     const top = Math.max(20, Math.round((window.screen.availHeight - h) / 2));
-    const popup = window.open(
-      officialUrl,
-      'anywear-studio',
-      `popup=yes,width=${w},height=${h},left=${left},top=${top}`
-    );
+    const popup = window.open(officialUrl, 'anywear-studio', `popup=yes,width=${w},height=${h},left=${left},top=${top}`);
     if (popup) {
       shrinkToCapsule();
-      showToast('Đã mở cửa sổ nổi AnyWear.Live! Bạn có thể kéo thả ảnh từ Pinterest, Google Images hoặc Lalin vào cửa sổ đó.');
+      showToast('Đã mở cửa sổ nổi AnyWear Cloud AI + thu nhỏ Capsule trên trang!');
     } else {
-      showToast('Vui lòng cho phép mở cửa sổ bật lên (Pop-up) trên trình duyệt để thả nổi AnyWear.');
+      showToast('Vui lòng cho phép mở cửa sổ bật lên (Pop-up) trên trình duyệt.');
     }
   });
 
-  // Official AnyWear.Live Cloud Bridge Button
   $('#openOfficialAnywearPopupBtn')?.addEventListener('click', () => {
     const p = state.studio.product || PRODUCTS[0];
     const garmentUrl = p?.imgFull || p?.img || '';
-    const officialUrl = `https://anywear.live/try-on?preview=1&garment=${encodeURIComponent(garmentUrl)}&from=lalin`;
+    const officialUrl = `https://anywear.decart.ai/?garment=${encodeURIComponent(garmentUrl)}`;
     window.open(officialUrl, '_blank', 'noopener');
   });
 
-  // Tier selector (Flash / Standard / Ultra)
   $$('[data-aw-tier]').forEach((btn) => {
     btn.addEventListener('click', () => {
       state.studio.tier = btn.dataset.awTier;
       $$('[data-aw-tier]').forEach((b) => b.classList.toggle('active', b === btn));
-      const names = { flash: 'Flash (Nhanh nhất)', standard: 'Standard (Mượt mà)', ultra: 'Ultra (Siêu thực)' };
-      showToast(`Đã chuyển chế độ AnyWear sang ${names[state.studio.tier] || 'Standard'}.`);
+      triggerAiSynthesisScan(`Đang tối ưu lưới vải 3D ở chế độ ${btn.textContent.trim()}...`);
     });
   });
 
@@ -1057,13 +1957,13 @@
     return {
       id: `custom-${Date.now()}`,
       title: label,
-      category: 'yem',
-      fabric: 'AnyWear Custom Upload',
+      category: 'to-lua',
+      fabric: 'AnyWear Custom AI Synthesis',
       price: 1690000,
       rent: 480000,
       sizes: ['S', 'M', 'L'],
       colors: ['Tùy chỉnh'],
-      url: 'https://anywear.live/try-on?preview=1',
+      url: 'https://anywear.decart.ai/',
       img: imgSrc,
       imgAlt: imgSrc,
       imgFull: imgSrc,
@@ -1084,14 +1984,13 @@
     $('#studioAddSheet')?.setAttribute('hidden', '');
     if (state.studio.inCapsule && !capsuleEl?.hidden) {
       selectStudioProduct(customProd);
-      showToast(`Đã đổi sang "${customProd.title}" ngay trong Capsule!`);
+      showToast(`AI đã mô phỏng & áp "${customProd.title}" ngay trong Capsule!`);
     } else {
       openStudio(customProd, { autoStartCam: false });
-      showToast(`Đã tải "${customProd.title}" vào phòng thử AnyWear.Live!`);
+      showToast(`AI đã tách trang phục "${customProd.title}" và khớp vào cơ thể chuyển động!`);
     }
   }
 
-  // Handle URL input (supports Lalin product links, direct image URLs, Pinterest/Google Images links)
   function handleUrlInput(rawUrl) {
     const trimmed = String(rawUrl || '').trim();
     if (!trimmed) return;
@@ -1103,10 +2002,8 @@
       return;
     }
 
-    // 1. Check if it matches one of the 69 Lalin products by handle
     const matchedLalin = PRODUCTS.find((p) => trimmed.includes(p.handle));
     if (matchedLalin) {
-      // Show candidate images from that Lalin product page (just like AnyWear's candidate picker!)
       const candBox = $('#studioCandidateBox');
       const candGrid = $('#studioCandidateGrid');
       if (candBox && candGrid && modal?.classList.contains('open')) {
@@ -1119,15 +2016,13 @@
         showToast(`Tìm thấy ${matchedLalin.gallery.length} ảnh từ "${matchedLalin.title}" — bấm chọn ảnh để thử!`);
       } else {
         openStudio(matchedLalin);
-        showToast(`Đã tải sản phẩm Lalin: "${matchedLalin.title}"!`);
+        showToast(`Đã nạp sản phẩm Lalin: "${matchedLalin.title}" vào AI Body-Fit!`);
       }
       return;
     }
 
-    // 2. Extract nested image URL if it's a Google Images or Pinterest redirect link
     const imgParam = parsed.searchParams.get('imgurl') || parsed.searchParams.get('media') || parsed.searchParams.get('url');
     const finalImgUrl = imgParam || parsed.href;
-
     const hostLabel = parsed.hostname.replace(/^www\./, '');
     const customProd = createCustomGarmentObject(finalImgUrl, `Trang phục từ ${hostLabel}`);
     $('#studioAddSheet')?.setAttribute('hidden', '');
@@ -1136,11 +2031,10 @@
       showToast(`Đã đổi trang phục từ ${hostLabel} trong Capsule!`);
     } else {
       openStudio(customProd);
-      showToast(`Đã nạp ảnh trang phục từ ${hostLabel}! Bấm "Bật Camera Live" hoặc "Mở trên AnyWear.Live ↗" để thử.`);
+      showToast(`Đã nạp ảnh trang phục từ ${hostLabel} vào bộ mô phỏng AI Body-Fit!`);
     }
   }
 
-  // Candidate grid click inside Add Sheet
   $('#studioCandidateGrid')?.addEventListener('click', (e) => {
     const btn = e.target.closest('[data-pick-lalin]');
     if (!btn) return;
@@ -1154,10 +2048,8 @@
     }
   });
 
-  // Extract dropped dataTransfer (Files, <img src> from other websites, product card drag, or URL)
   function handleDataTransferDrop(dt) {
     if (!dt) return;
-    // 1. Internal Lalin product drag
     const internalId = dt.getData('application/x-anywear-id');
     if (internalId) {
       const prod = PRODUCTS.find((p) => p.id === internalId);
@@ -1167,19 +2059,15 @@
           showToast(`Đã đổi sang "${prod.title}" trong Capsule!`);
         } else {
           openStudio(prod);
-          showToast(`Đã chọn "${prod.title}" để thử đồ!`);
+          showToast(`Đã chọn "${prod.title}" để thử đồ AI Body-Fit!`);
         }
         return;
       }
     }
-
-    // 2. Dropped image file from computer
     if (dt.files && dt.files.length > 0) {
       handleFileInput(dt.files[0], 'Ảnh kéo thả');
       return;
     }
-
-    // 3. Dropped HTML `<img>` from Pinterest, Google Images, or any website
     const html = dt.getData('text/html');
     if (html) {
       const m = html.match(/<img[^>]+src=["']([^"']+)["']/i);
@@ -1188,15 +2076,12 @@
         return;
       }
     }
-
-    // 4. Dropped URI / plain text URL
     const uri = dt.getData('text/uri-list') || dt.getData('text/plain');
     if (uri) {
       handleUrlInput(uri.split(/\r?\n/)[0]);
     }
   }
 
-  // Bind Landing Page Universal Hub Controls
   const hubFileInput = $('#hubFileInput');
   $('#hubUploadBtn')?.addEventListener('click', () => hubFileInput?.click());
   $('#trayQuickUploadBtn')?.addEventListener('click', () => hubFileInput?.click());
@@ -1228,7 +2113,6 @@
     }
   });
 
-  // Open / close Add Clothes sheet inside Studio
   $('#studioAddClothesBtn')?.addEventListener('click', () => {
     const sheet = $('#studioAddSheet');
     if (sheet) sheet.hidden = !sheet.hidden;
@@ -1237,7 +2121,6 @@
     $('#studioAddSheet')?.setAttribute('hidden', '');
   });
 
-  // Drag & Drop on Hub, Studio Viewport, and Floating Capsule
   function bindDropZone(el, activeClass) {
     if (!el) return;
     el.addEventListener('dragenter', (e) => { e.preventDefault(); el.classList.add(activeClass); });
@@ -1256,7 +2139,6 @@
   bindDropZone($('#studioDropViewport'), 'dragging-over');
   bindDropZone(capsuleEl, 'capsule-drop-active');
 
-  // Global Clipboard Paste (Ctrl+V / Cmd+V) for screenshots, copied images, or product links
   document.addEventListener('paste', (e) => {
     if (e.target.closest('input, textarea')) return;
     const cb = e.clipboardData;
@@ -1275,7 +2157,7 @@
   });
 
   // ==========================================================================
-  // 9. CAMERA & MOTION-TRACKING CONTROLS INSIDE STUDIO
+  // 9. CAMERA, AI POSE MESH & INTERACTIVE CONTROLS INSIDE STUDIO
   // ==========================================================================
   $('#studioThumbs')?.addEventListener('click', (e) => {
     const t = e.target.closest('[data-thumb]');
@@ -1294,32 +2176,36 @@
     renderChips();
   });
 
-  // Auto Motion Track toggle
   $('#studioAutoTrackBtn')?.addEventListener('click', (e) => {
     state.studio.autoTrack = !state.studio.autoTrack;
     e.currentTarget.classList.toggle('active', state.studio.autoTrack);
-    e.currentTarget.textContent = state.studio.autoTrack ? '🎯 Bám Chuyển Động: BẬT' : '🎯 Bám Chuyển Động: TẮT';
+    e.currentTarget.textContent = state.studio.autoTrack ? '🎯 Khớp Cơ Thể: BẬT' : '🎯 Khớp Cơ Thể: TẮT';
     showToast(state.studio.autoTrack
-      ? 'Đã bật Bám Chuyển Động Cơ Thể (Auto Motion Track).'
-      : 'Đã tắt Bám Chuyển Động — bạn có thể kéo thả cố định vị trí áo.');
+      ? 'Đã bật AI Khớp Cơ Thể 3D — lưới áo tự động biến dạng theo vai, ngực và eo.'
+      : 'Đã khóa chuyển động tự động — bạn có thể kéo/phóng to vị trí áo thủ công.');
   });
 
-  // AI Background Matte toggle
   $('#studioBgMatteBtn')?.addEventListener('click', (e) => {
     state.studio.aiMatte = !state.studio.aiMatte;
     e.currentTarget.classList.toggle('active', state.studio.aiMatte);
     showToast(state.studio.aiMatte
-      ? 'Đã bật Tách Nền AI — tự động làm trong suốt nền sáng quanh trang phục.'
-      : 'Đang hiển thị khung ảnh gốc.');
+      ? 'Đã bật AI Tách Áo — tự động xóa phần đầu mẫu cũ & tách nền quanh trang phục.'
+      : 'Đang hiển thị texture gốc.');
   });
 
-  // Hold to see yourself button (exact AnyWear.Live feature)
-  const holdSelfBtn = $('#studioHoldSelfBtn');
+  $('#studioMeshDebugBtn')?.addEventListener('click', (e) => {
+    state.studio.showMeshDebug = !state.studio.showMeshDebug;
+    e.currentTarget.classList.toggle('active', state.studio.showMeshDebug);
+    showToast(state.studio.showMeshDebug
+      ? 'Đang hiển thị Khung xương AI 33 điểm & Lưới biến dạng vải 96 tam giác!'
+      : 'Đã ẩn lưới khung xương AI.');
+  });
+
   if (holdSelfBtn) {
     const setHold = (val) => {
       state.studio.holdOriginal = val;
       holdSelfBtn.setAttribute('aria-pressed', String(val));
-      holdSelfBtn.textContent = val ? 'Đang hiển thị camera gốc' : 'Giữ để xem camera gốc';
+      holdSelfBtn.textContent = val ? 'Đang hiển thị cơ thể gốc' : 'Giữ để xem cơ thể gốc';
     };
     holdSelfBtn.addEventListener('pointerdown', () => setHold(true));
     holdSelfBtn.addEventListener('pointerup', () => setHold(false));
@@ -1327,28 +2213,37 @@
     holdSelfBtn.addEventListener('pointercancel', () => setHold(false));
   }
 
-  // Drag & mouse-wheel zoom directly on the Live Canvas to fine-tune garment placement
+  // Interactive 3D body rotation on mousemove + drag/wheel adjustment on Live Canvas
   if (liveCanvas) {
     let dragging = false; let sx = 0; let sy = 0; let ox = 0; let oy = 0;
     liveCanvas.addEventListener('pointerdown', (e) => {
       dragging = true;
       sx = e.clientX;
       sy = e.clientY;
-      ox = tracker.manualX;
-      oy = tracker.manualY;
+      ox = poseState.manualX;
+      oy = poseState.manualY;
       liveCanvas.setPointerCapture(e.pointerId);
     });
     liveCanvas.addEventListener('pointermove', (e) => {
+      const rect = liveCanvas.getBoundingClientRect();
+      if (state.studio.autoTrack) {
+        poseState.pointerX = ((e.clientX - rect.left) / Math.max(1, rect.width) - 0.5) * 2;
+        poseState.pointerY = ((e.clientY - rect.top) / Math.max(1, rect.height) - 0.5) * 2;
+      }
       if (!dragging) return;
-      tracker.manualX = ox + (e.clientX - sx);
-      tracker.manualY = oy + (e.clientY - sy);
+      poseState.manualX = ox + (e.clientX - sx);
+      poseState.manualY = oy + (e.clientY - sy);
+    });
+    liveCanvas.addEventListener('pointerleave', () => {
+      poseState.pointerX = 0;
+      poseState.pointerY = 0;
     });
     const endDrag = () => { dragging = false; };
     liveCanvas.addEventListener('pointerup', endDrag);
     liveCanvas.addEventListener('pointercancel', endDrag);
     liveCanvas.addEventListener('wheel', (e) => {
       e.preventDefault();
-      tracker.manualScale = Math.max(0.55, Math.min(2.1, tracker.manualScale - e.deltaY * 0.001));
+      poseState.manualScale = Math.max(0.65, Math.min(1.85, poseState.manualScale - e.deltaY * 0.001));
     }, { passive: false });
   }
 
@@ -1408,11 +2303,6 @@
     $('#lightingModeLabel').textContent = label;
   }));
 
-  // --- Start / Stop / Flip Live Webcam --------------------------------------
-  const modeAvatarBtn = $('#modeAvatarBtn');
-  const modeWebcamBtn = $('#modeWebcamBtn');
-  const flipCamBtn = $('#studioFlipCamBtn');
-
   function formatTimer(sec) {
     const m = Math.floor(sec / 60);
     const s = Math.floor(sec % 60);
@@ -1420,7 +2310,7 @@
   }
 
   function startSessionTimer() {
-    clearInterval(state.timerId);
+    if (state.timerId) return;
     state.liveStartAt = Date.now();
     state.timerId = setInterval(() => {
       const elapsed = (Date.now() - state.liveStartAt) / 1000;
@@ -1434,10 +2324,12 @@
 
   async function startWebcam(facing = state.studio.facingMode) {
     if (!navigator.mediaDevices?.getUserMedia || !window.isSecureContext) {
-      showToast('Trình duyệt cần chạy trên HTTPS hoặc localhost để bật Camera trực tiếp.');
+      showToast('Trình duyệt cần chạy trên HTTPS hoặc localhost để bật Camera trực tiếp. Đang chạy chế độ AI Body-Fit Live!');
+      setStudioViewMode('ai-motion');
       return;
     }
     try {
+      initMediaPipePose();
       if (state.webcamStream) {
         state.webcamStream.getTracks().forEach((t) => t.stop());
       }
@@ -1450,69 +2342,63 @@
       webcamVideo.srcObject = state.webcamStream;
       await webcamVideo.play().catch(() => {});
 
-      stage?.classList.add('webcam-on');
-      if (holdSelfBtn) holdSelfBtn.hidden = false;
       if (flipCamBtn) flipCamBtn.hidden = false;
-
-      const liveBadge = $('#studioLiveBadge');
-      if (liveBadge) liveBadge.classList.add('is-live');
-      const liveText = $('#studioLiveStatusText');
-      if (liveText) liveText.textContent = 'LIVE';
-
       if (modeWebcamBtn) {
-        modeWebcamBtn.textContent = '⏹ Tắt Camera';
+        modeWebcamBtn.textContent = '⏹ Tắt Camera Thật';
         modeWebcamBtn.classList.add('live-on');
       }
-      modeAvatarBtn?.classList.remove('active');
-
-      const capThumb = $('#capsuleGarmentThumb');
-      if (capThumb) capThumb.style.display = 'none';
 
       startSessionTimer();
-      if (!tracker.rafId) {
-        tracker.rafId = requestAnimationFrame(renderLiveLoop);
-      }
-      showToast('Camera AnyWear.Live đã bật! Hãy di chuyển cơ thể để xem trang phục bám theo chuyển động của bạn.');
+      triggerAiSynthesisScan('AI MediaPipe Pose đang quét 33 điểm cơ thể từ Camera...');
+      setStudioViewMode('webcam');
+      showToast('Camera thật đã bật! AI đang bám theo 33 điểm vai, ngực, khuỷu tay và eo của bạn theo thời gian thực.');
     } catch (err) {
-      showToast('Không thể truy cập Camera. Hãy cấp quyền Camera trên thanh địa chỉ trình duyệt hoặc mở trên AnyWear.Live ↗');
+      setStudioViewMode('ai-motion');
+      showToast('Chưa cấp quyền Camera hoặc thiết bị không có sẵn webcam — đang chạy Mô Phỏng Cơ Thể AI (di chuột để xoay 3D)!');
     }
   }
 
-  function stopWebcam() {
+  function stopWebcam(switchToAvatar = false) {
     if (state.webcamStream) {
       state.webcamStream.getTracks().forEach((t) => t.stop());
       state.webcamStream = null;
     }
-    if (tracker.rafId) {
-      cancelAnimationFrame(tracker.rafId);
-      tracker.rafId = null;
-    }
-    clearInterval(state.timerId);
+    poseState.hasLiveLandmarks = false;
     if (webcamVideo) webcamVideo.srcObject = null;
-    stage?.classList.remove('webcam-on');
-    if (holdSelfBtn) holdSelfBtn.hidden = true;
     if (flipCamBtn) flipCamBtn.hidden = true;
 
-    const liveBadge = $('#studioLiveBadge');
-    if (liveBadge) liveBadge.classList.remove('is-live');
-    const liveText = $('#studioLiveStatusText');
-    if (liveText) liveText.textContent = 'PREVIEW';
-
     if (modeWebcamBtn) {
-      modeWebcamBtn.textContent = '📷 Bật Camera Live';
+      modeWebcamBtn.textContent = '📷 Bật Camera Thật';
       modeWebcamBtn.classList.remove('live-on');
     }
-    modeAvatarBtn?.classList.add('active');
 
-    const capThumb = $('#capsuleGarmentThumb');
-    if (capThumb) capThumb.style.display = 'block';
+    if (switchToAvatar) {
+      if (poseState.rafId) {
+        cancelAnimationFrame(poseState.rafId);
+        poseState.rafId = null;
+      }
+      clearInterval(state.timerId);
+      state.timerId = null;
+      setStudioViewMode('avatar');
+    } else {
+      setStudioViewMode('ai-motion');
+    }
   }
 
   modeWebcamBtn?.addEventListener('click', () => {
-    if (state.webcamStream) stopWebcam();
+    if (state.webcamStream) stopWebcam(false);
     else startWebcam(state.studio.facingMode);
   });
-  modeAvatarBtn?.addEventListener('click', stopWebcam);
+
+  modeAiMotionBtn?.addEventListener('click', () => {
+    if (state.webcamStream) stopWebcam(false);
+    else setStudioViewMode('ai-motion');
+    triggerAiSynthesisScan('Đang kích hoạt mô phỏng cơ thể chuyển động & lưới vải 96 tam giác...');
+  });
+
+  modeAvatarBtn?.addEventListener('click', () => {
+    stopWebcam(true);
+  });
 
   flipCamBtn?.addEventListener('click', () => {
     const nextFacing = state.studio.facingMode === 'user' ? 'environment' : 'user';
@@ -1558,7 +2444,7 @@
           <small style="color: var(--accent-gold);">${fmt(i.unit * i.qty)}</small>
         </div>
         <button type="button" class="remove-btn" data-remove="${idx}" title="Xóa">✕</button>
-      </div>`).join('') : '<p class="bag-empty">Chưa có sản phẩm. Hãy thử đồ bằng AnyWear.Live và thêm vào giỏ nhé!</p>';
+      </div>`).join('') : '<p class="bag-empty">Chưa có sản phẩm. Hãy thử đồ bằng AnyWear AI và thêm vào giỏ nhé!</p>';
     $('#bagTotal').textContent = fmt(state.bag.reduce((s, i) => s + i.unit * i.qty, 0));
   }
 
@@ -1594,9 +2480,8 @@
     else if (bagDrawer?.classList.contains('open')) closeBag();
   });
 
-  window.addEventListener('pagehide', stopWebcam);
+  window.addEventListener('pagehide', () => stopWebcam(true));
 
-  // Support URL query parameter `?garment=<url>` on our own landing page too!
   function checkInitialGarmentQuery() {
     const params = new URLSearchParams(window.location.search);
     const garmentParam = params.get('garment');

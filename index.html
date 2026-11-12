@@ -238,8 +238,8 @@
         </form>
 
         <div class="aw-hub-foot">
-          <span>🔒 Video camera chỉ xử lý trực tiếp trên thiết bị, không bao giờ lưu trữ.</span>
-          <a href="https://anywear.live/try-on?preview=1" target="_blank" rel="noopener" id="hubOfficialLink">Mở AnyWear.Live ↗</a>
+          <span>🔒 AI Pose &amp; Mesh Warp xử lý 60FPS trực tiếp trên trình duyệt — khớp vừa khít vai, ngực, eo khi bạn cử động.</span>
+          <a href="https://chromewebstore.google.com/detail/anywear-virtual-try-on/hijnklblgecbdlhjiofhlhjpndpifejh" target="_blank" rel="noopener" id="hubOfficialLink">Cài Chrome Extension AnyWear ↗</a>
         </div>
       </div>
     </div>
@@ -451,9 +451,24 @@
             <span class="ar-guide-point hem-b" title="Chiều dài tà"></span>
           </div>
 
+          <!-- AI Garment Synthesis & Body Calibration Scan Overlay -->
+          <div class="ai-synthesis-overlay" id="aiSynthesisOverlay" hidden>
+            <div class="ai-synth-beam"></div>
+            <div class="ai-synth-pill">
+              <span class="ai-synth-spinner"></span>
+              <span id="aiSynthesisStatusText">AI đang tách trang phục &amp; khớp khung xương 3D...</span>
+            </div>
+          </div>
+
+          <!-- AI Pose & Cloth Mesh Status Pill (Top-Left inside Stage) -->
+          <div class="ai-pose-hud-pill" id="aiPoseHudPill" hidden>
+            <span class="ai-pose-dot"></span>
+            <span id="aiPoseHudText">AI Body-Fit: Khớp 33 điểm cơ thể (96-Triangle Mesh)</span>
+          </div>
+
           <!-- "Hold to see yourself" button (exact AnyWear.Live feature when camera is on) -->
           <button type="button" class="aw-hold-self-btn" id="studioHoldSelfBtn" hidden>
-            Giữ để xem camera gốc
+            Giữ để xem cơ thể gốc
           </button>
 
           <!-- Drag & Drop Overlay inside Studio -->
@@ -509,18 +524,24 @@
 
           <!-- Camera & Tracking Action Bar -->
           <div class="aw-cam-controls">
-            <button type="button" class="dock-mini-btn active" id="modeAvatarBtn">Người Mẫu</button>
+            <button type="button" class="dock-mini-btn" id="modeAvatarBtn">Ảnh Gốc</button>
+            <button type="button" class="dock-mini-btn active" id="modeAiMotionBtn" title="Mô phỏng cơ thể thật đang chuyển động &amp; AI tự động tách áo áp vừa khít cơ thể">
+              🕺 AI Body-Fit Live
+            </button>
             <button type="button" class="btn-aw-camera-start" id="modeWebcamBtn">
-              📷 Bật Camera Live
+              📷 Bật Camera Thật
             </button>
             <button type="button" class="dock-mini-btn" id="studioFlipCamBtn" title="Đổi Camera Trước / Sau" hidden>
               🔄 Đổi Cam
             </button>
-            <button type="button" class="dock-mini-btn active" id="studioAutoTrackBtn" title="Tự động bám theo chuyển động cơ thể khi bạn di chuyển">
-              🎯 Bám Chuyển Động: BẬT
+            <button type="button" class="dock-mini-btn active" id="studioAutoTrackBtn" title="Tự động biến dạng lưới áo 3D (Mesh Warp) khớp với chuyển động vai, ngực, eo">
+              🎯 Khớp Cơ Thể: BẬT
             </button>
-            <button type="button" class="dock-mini-btn active" id="studioBgMatteBtn" title="Tự động tách nền sáng của ảnh sản phẩm để hòa trộn tự nhiên lên cơ thể">
-              ✨ Tách Nền AI
+            <button type="button" class="dock-mini-btn active" id="studioBgMatteBtn" title="AI tự động tách rời trang phục khỏi người mẫu gốc &amp; xóa nền">
+              ✨ AI Tách Áo
+            </button>
+            <button type="button" class="dock-mini-btn" id="studioMeshDebugBtn" title="Hiển thị khung xương AI 33 điểm &amp; lưới biến dạng trang phục 96 tam giác">
+              🦴 Lưới AI
             </button>
           </div>
         </div>
@@ -733,6 +754,7 @@
     </div>
   </footer>
 
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
   <script src="lalin-data.js"></script>
   <script src="app.js"></script>
 </body>

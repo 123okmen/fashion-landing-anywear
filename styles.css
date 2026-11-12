@@ -2734,3 +2734,151 @@ body.modal-open { overflow: hidden; }
     max-height: none;
   }
 }
+
+/* ==========================================================================
+   AI GARMENT SYNTHESIS, MEDIAPIPE 3D POSE MESH WARP & ON-CARD AI LIVE FIT
+   ========================================================================== */
+
+.ai-synthesis-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 26;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle at 50% 45%, rgba(200, 255, 46, 0.14), rgba(10, 11, 14, 0.55));
+  backdrop-filter: blur(3px);
+  overflow: hidden;
+  transition: opacity 0.28s ease;
+}
+
+.ai-synthesis-overlay[hidden] {
+  display: none !important;
+}
+
+.ai-synth-beam {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, transparent, #c8ff2e, #2dd4bf, transparent);
+  box-shadow: 0 0 24px 4px rgba(200, 255, 46, 0.75);
+  animation: aiScanBeam 0.75s ease-in-out infinite alternate;
+}
+
+@keyframes aiScanBeam {
+  0% { top: 14%; }
+  100% { top: 84%; }
+}
+
+.ai-synth-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 18px;
+  border-radius: 999px;
+  background: rgba(10, 12, 16, 0.88);
+  border: 1px solid rgba(200, 255, 46, 0.55);
+  color: #f4f7ec;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.6);
+}
+
+.ai-synth-spinner {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid rgba(200, 255, 46, 0.25);
+  border-top-color: #c8ff2e;
+  animation: aiSpin 0.65s linear infinite;
+}
+
+@keyframes aiSpin {
+  to { transform: rotate(360deg); }
+}
+
+.ai-pose-hud-pill {
+  position: absolute;
+  top: 56px;
+  left: 16px;
+  z-index: 22;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 11px;
+  border-radius: 999px;
+  background: rgba(10, 12, 16, 0.78);
+  border: 1px solid rgba(200, 255, 46, 0.35);
+  backdrop-filter: blur(10px);
+  color: #e4f8b6;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  pointer-events: none;
+}
+
+.ai-pose-hud-pill[hidden] {
+  display: none !important;
+}
+
+.ai-pose-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #22c55e;
+  box-shadow: 0 0 8px #22c55e;
+}
+
+/* On-Card AI Live Body-Fit Canvas & Toggle Button on every product card */
+.card-ai-live-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: 6;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.28s ease;
+  background: #0d0e12;
+}
+
+.lookbook-card.ai-fit-active .card-ai-live-canvas,
+.product-card.ai-fit-active .card-ai-live-canvas,
+.hero-visual-stage.ai-fit-active .card-ai-live-canvas {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.card-ai-fit-toggle {
+  position: absolute;
+  bottom: 54px;
+  right: 14px;
+  z-index: 9;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 11px;
+  border-radius: 999px;
+  background: rgba(12, 13, 17, 0.84);
+  border: 1px solid rgba(200, 255, 46, 0.55);
+  color: #c8ff2e;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  backdrop-filter: blur(10px);
+  transition: transform 0.2s ease, background 0.2s ease, color 0.2s ease;
+}
+
+.card-ai-fit-toggle:hover,
+.lookbook-card.ai-fit-active .card-ai-fit-toggle,
+.product-card.ai-fit-active .card-ai-fit-toggle {
+  background: #c8ff2e;
+  color: #0b0c0e;
+  transform: translateY(-2px);
+}
+
