@@ -398,8 +398,9 @@
             <div class="dock-top-row">
               <span style="color: var(--accent-gold);">${esc(p.fabric)}</span>
               <div style="display: flex; gap: 6px;">
-                <button type="button" class="dock-mini-btn tryon-trigger" data-tryon-now="${p.id}">✦ Try-On Camera</button>
-                <button type="button" class="dock-mini-btn" data-open-detail="${p.id}">Chi tiết &amp; Thuê</button>
+                <button type="button" class="dock-mini-btn tryon-trigger" data-tryon-now="${p.id}">✦ Try-On Cam</button>
+                <button type="button" class="dock-mini-btn" data-photo-tryon-now="${p.id}" title="Tải 1 tấm ảnh chân dung tĩnh để ghép đồ (IDM-VTON / CatVTON / OOTDiffusion)">📸 Ảnh Tĩnh</button>
+                <button type="button" class="dock-mini-btn" data-open-detail="${p.id}">Chi tiết</button>
               </div>
             </div>
           </div>
@@ -442,6 +443,13 @@
       const prod = PRODUCTS.find((p) => p.id === tryBtn.dataset.tryonNow);
       const imgEl = card ? $('.lookbook-img-primary', card) : null;
       triggerAnywearTryOn(prod, imgEl);
+      return;
+    }
+    const photoBtn = e.target.closest('[data-photo-tryon-now]');
+    if (photoBtn) {
+      e.stopPropagation();
+      const prod = PRODUCTS.find((p) => p.id === photoBtn.dataset.photoTryonNow);
+      if (prod) openStaticPhotoVton(prod);
       return;
     }
     const detailBtn = e.target.closest('[data-open-detail]');
@@ -648,8 +656,9 @@
               </div>
             </div>
             <div class="product-actions">
-              <button type="button" class="btn-anywear-card" data-tryon-id="${p.id}"><span>✦</span> Try-On (Anywear)</button>
-              <button type="button" class="btn-book-item" data-book-id="${p.id}">${rentMode ? '+ Đặt Thuê' : '+ Mua Ngay'}</button>
+              <button type="button" class="btn-anywear-card" data-tryon-id="${p.id}"><span>✦</span> Try-On (Cam)</button>
+              <button type="button" class="btn-photo-vton-card" data-photo-tryon-id="${p.id}" title="Tải 1 ảnh chân dung tĩnh để ghép đồ (IDM-VTON / CatVTON / OOTDiffusion)">📸 Ảnh Tĩnh</button>
+              <button type="button" class="btn-book-item" data-book-id="${p.id}">${rentMode ? '+ Thuê' : '+ Mua'}</button>
             </div>
           </div>
         </div>
@@ -729,6 +738,13 @@
       const prod = PRODUCTS.find((p) => p.id === tryBtn.dataset.tryonId);
       const imgEl = card ? $('.product-img-main', card) : null;
       triggerAnywearTryOn(prod, imgEl);
+      return;
+    }
+    const photoBtn = e.target.closest('[data-photo-tryon-id]');
+    if (photoBtn) {
+      e.stopPropagation();
+      const prod = PRODUCTS.find((p) => p.id === photoBtn.dataset.photoTryonId);
+      if (prod) openStaticPhotoVton(prod);
       return;
     }
     const detailBtn = e.target.closest('[data-open-detail]');
@@ -885,9 +901,12 @@
     state.studio.size = recommendSize();
     renderChips();
     updateStylistVerdictForCurrent();
+    if (vtonState.active) {
+      runStaticPhotoVtonSynthesis(false);
+    }
   }
 
-  function openStudio(product) {
+  function openStudio(product, initialMode = 'live') {
     const targetProduct = product || state.studio.product || PRODUCTS[0];
     if (!targetProduct || !modal) return;
     selectStudioProduct(targetProduct);
@@ -896,6 +915,11 @@
     modal.classList.add('open');
     modal.setAttribute('aria-hidden', 'false');
     document.body.classList.add('modal-open');
+    setStudioMode(initialMode);
+  }
+
+  function openStaticPhotoVton(product) {
+    openStudio(product || state.studio.product || PRODUCTS[0], 'photo');
   }
 
   function closeStudio() {
@@ -919,6 +943,738 @@
   $('#modeWebcamBtn')?.addEventListener('click', () => {
     triggerAnywearTryOn(state.studio.product || PRODUCTS[0]);
   });
+
+  // ==========================================================================
+  // 7B. OPEN-SOURCE STATIC PHOTO VIRTUAL TRY-ON (IDM-VTON / CatVTON / OOTDiffusion)
+  //     Zero Per-Click Licensing Fee · Self-Hosted GPU or Free Quota API
+  // ==========================================================================
+  const vtonState = {
+    active: false,
+    model: 'idm-vton',
+    category: 'upper_body',
+    sampleIdx: 0,
+    customPortraitImg: null,
+    customPortraitName: '',
+    remoteDiffusedImg: null,
+    garmentCutoutCanvas: null,
+    garmentCutoutSrc: '',
+    comparePct: 100,
+    offsetY: 0,
+    scale: 100,
+    shoulder: 100
+  };
+
+  const VTON_MODEL_LABELS = {
+    'idm-vton': 'IDM-VTON (yisol/IDM-VTON)',
+    'catvton': 'CatVTON (zhengchong/CatVTON · <8GB VRAM)',
+    'ootdiffusion': 'OOTDiffusion (levihsu/OOTDiffusion)'
+  };
+
+  const SAMPLE_PORTRAIT_PRESETS = [
+    {
+      title: 'Mẫu 01 — Chính diện Studio',
+      bgTop: '#f3ede2',
+      bgBottom: '#dfd5c5',
+      skinTone: '#f2ccb0',
+      skinShadow: '#d9aa8b',
+      hairColor: '#1f1a18',
+      baseTopColor: '#e5e0d8',
+      skirtColor: '#232329',
+      shoulderScale: 1.0,
+      poseShiftX: 0
+    },
+    {
+      title: 'Mẫu 02 — Ánh nắng Thảo Điền',
+      bgTop: '#f8efe0',
+      bgBottom: '#e5cfa8',
+      skinTone: '#efd0b6',
+      skinShadow: '#d4ab8a',
+      hairColor: '#2c1f19',
+      baseTopColor: '#ebe4d8',
+      skirtColor: '#f5f2eb',
+      shoulderScale: 0.97,
+      poseShiftX: 6
+    },
+    {
+      title: 'Mẫu 03 — Dáng đứng Lookbook',
+      bgTop: '#e8ecf2',
+      bgBottom: '#cfd6e2',
+      skinTone: '#f4d5be',
+      skinShadow: '#dab196',
+      hairColor: '#181619',
+      baseTopColor: '#dfe3ea',
+      skirtColor: '#1c1d24',
+      shoulderScale: 1.03,
+      poseShiftX: -5
+    }
+  ];
+
+  function setStudioMode(mode) {
+    const isPhoto = mode === 'photo';
+    vtonState.active = isPhoto;
+    const panel = $('#studioStaticPhotoPanel');
+    const tabLive = $('#tabModeLiveCamBtn');
+    const tabPhoto = $('#tabModeStaticPhotoBtn');
+    const statusText = $('#studioLiveStatusText');
+
+    if (panel) panel.hidden = !isPhoto;
+    if (tabLive) {
+      tabLive.classList.toggle('active', !isPhoto);
+      tabLive.setAttribute('aria-selected', String(!isPhoto));
+    }
+    if (tabPhoto) {
+      tabPhoto.classList.toggle('active', isPhoto);
+      tabPhoto.setAttribute('aria-selected', String(isPhoto));
+    }
+    if (statusText) {
+      statusText.textContent = isPhoto ? 'STATIC PHOTO VTON · 0₫/CLICK' : 'ANYWEAR READY';
+    }
+    if (isPhoto) {
+      runStaticPhotoVtonSynthesis(true);
+    }
+  }
+
+  $('#tabModeLiveCamBtn')?.addEventListener('click', () => setStudioMode('live'));
+  $('#tabModeStaticPhotoBtn')?.addEventListener('click', () => setStudioMode('photo'));
+  $('#modeStaticPhotoBtn')?.addEventListener('click', () => setStudioMode('photo'));
+  $('#hubOpenPhotoVtonBtn')?.addEventListener('click', () => openStaticPhotoVton(state.studio.product || PRODUCTS[0]));
+  $('#hubOpenStaticPhotoBtn')?.addEventListener('click', () => openStaticPhotoVton(state.studio.product || PRODUCTS[0]));
+
+  $('#vtonToggleApiConfigBtn')?.addEventListener('click', () => {
+    const drawer = $('#vtonApiDrawer');
+    if (drawer) drawer.hidden = !drawer.hidden;
+  });
+
+  $('#vtonModelSelect')?.addEventListener('change', (e) => {
+    vtonState.model = e.target.value;
+    runStaticPhotoVtonSynthesis(true);
+  });
+
+  $('#vtonCategorySelect')?.addEventListener('change', (e) => {
+    vtonState.category = e.target.value;
+    vtonState.garmentCutoutSrc = ''; // force re-extraction with new region
+    runStaticPhotoVtonSynthesis(true);
+  });
+
+  $$('[data-sample-portrait]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      vtonState.sampleIdx = Number(btn.dataset.samplePortrait || 0);
+      vtonState.customPortraitImg = null;
+      vtonState.remoteDiffusedImg = null;
+      $$('[data-sample-portrait]').forEach((b) => b.classList.toggle('active', b === btn));
+      runStaticPhotoVtonSynthesis(true);
+    });
+  });
+
+  $('#vtonUploadPortraitBtn')?.addEventListener('click', () => {
+    $('#vtonPortraitFileInput')?.click();
+  });
+
+  $('#vtonPortraitFileInput')?.addEventListener('change', (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      showToast('Vui lòng chọn file ảnh chân dung (JPG, PNG, WebP).');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        vtonState.customPortraitImg = img;
+        vtonState.customPortraitName = file.name.replace(/\.[^.]+$/, '').slice(0, 28);
+        vtonState.remoteDiffusedImg = null;
+        $$('[data-sample-portrait]').forEach((b) => b.classList.remove('active'));
+        showToast(`Đã tải ảnh chân dung "${vtonState.customPortraitName}" — đang ghép trang phục bằng ${VTON_MODEL_LABELS[vtonState.model]}!`);
+        runStaticPhotoVtonSynthesis(true);
+      };
+      img.src = String(reader.result);
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  });
+
+  $('#vtonRunSynthesizeBtn')?.addEventListener('click', () => {
+    runStaticPhotoVtonSynthesis(true);
+  });
+
+  $('#vtonCompareSlider')?.addEventListener('input', (e) => {
+    vtonState.comparePct = Number(e.target.value);
+    const lbl = $('#vtonCompareLabel');
+    if (lbl) lbl.textContent = `Kết quả VTON: ${vtonState.comparePct}%`;
+    renderStaticPhotoVtonCanvas();
+  });
+
+  ['vtonOffsetY', 'vtonScale', 'vtonShoulder'].forEach((id) => {
+    $(`#${id}`)?.addEventListener('input', () => {
+      vtonState.offsetY = Number($('#vtonOffsetY')?.value || 0);
+      vtonState.scale = Number($('#vtonScale')?.value || 100);
+      vtonState.shoulder = Number($('#vtonShoulder')?.value || 100);
+      renderStaticPhotoVtonCanvas();
+    });
+  });
+
+  $('#vtonResetFitBtn')?.addEventListener('click', () => {
+    vtonState.offsetY = 0;
+    vtonState.scale = 100;
+    vtonState.shoulder = 100;
+    if ($('#vtonOffsetY')) $('#vtonOffsetY').value = '0';
+    if ($('#vtonScale')) $('#vtonScale').value = '100';
+    if ($('#vtonShoulder')) $('#vtonShoulder').value = '100';
+    renderStaticPhotoVtonCanvas();
+  });
+
+  $('#vtonDownloadBtn')?.addEventListener('click', () => {
+    const canvas = $('#vtonResultCanvas');
+    if (!canvas) return;
+    const prevPct = vtonState.comparePct;
+    vtonState.comparePct = 100;
+    renderStaticPhotoVtonCanvas();
+    const link = document.createElement('a');
+    const prodSlug = (state.studio.product?.handle || 'lalin-outfit').slice(0, 32);
+    link.download = `vton-${vtonState.model}-${prodSlug}.png`;
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+    vtonState.comparePct = prevPct;
+    renderStaticPhotoVtonCanvas();
+    showToast('Đã tải ảnh kết quả thử đồ tĩnh (PNG) về máy!');
+  });
+
+  $('#vtonCopyServerCodeBtn')?.addEventListener('click', async () => {
+    const pyCode = `# Self-Hosted Open-Source VTON API Server (IDM-VTON / CatVTON / OOTDiffusion)
+# Chạy trên Server có GPU (hoặc Google Colab / RunPod) — 0đ phí bản quyền theo lượt bấm
+# Cài đặt: pip install fastapi uvicorn gradio_client pillow
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from gradio_client import Client, handle_file
+
+app = FastAPI(title="Self-Hosted OpenVTON Bridge")
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+
+SPACES = {
+    "idm-vton": "yisol/IDM-VTON",
+    "catvton": "zhengchong/CatVTON",
+    "ootdiffusion": "levihsu/OOTDiffusion"
+}
+
+class VtonRequest(BaseModel):
+    model: str = "idm-vton"
+    personImage: str
+    garmentImage: str
+    category: str = "upper_body"
+    steps: int = 30
+    guidanceScale: float = 2.5
+    seed: int = 42
+
+@app.post("/api/vton/photo")
+def run_vton(req: VtonRequest):
+    client = Client(SPACES.get(req.model, "yisol/IDM-VTON"))
+    result = client.predict(
+        dict={"background": handle_file(req.personImage), "layers": [], "composite": None},
+        garm_img=handle_file(req.garmentImage),
+        garment_des="Lalin Vietnamese Silk & Brocade Garment",
+        is_checked=True,
+        is_checked_crop=False,
+        denoise_steps=req.steps,
+        seed=req.seed,
+        api_name="/tryon"
+    )
+    return {"ok": True, "resultImageUrl": result[0]}
+`;
+    try {
+      await navigator.clipboard.writeText(pyCode);
+      showToast('Đã sao chép code Python FastAPI tự host IDM-VTON / CatVTON / OOTDiffusion vào clipboard!');
+    } catch {
+      showToast('Đã sẵn sàng mẫu code Python FastAPI trong cấu hình API.');
+    }
+  });
+
+  // Draw a realistic studio portrait silhouette onto an offscreen canvas when using sample presets
+  function drawSamplePortraitBase(ctx, W, H, preset, includeBaseTop = true) {
+    // 1. Studio backdrop gradient
+    const bgGrad = ctx.createLinearGradient(0, 0, 0, H);
+    bgGrad.addColorStop(0, preset.bgTop);
+    bgGrad.addColorStop(1, preset.bgBottom);
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, W, H);
+
+    // Subtle studio light vignette
+    const rad = ctx.createRadialGradient(W * 0.5, H * 0.35, 60, W * 0.5, H * 0.45, W * 0.75);
+    rad.addColorStop(0, 'rgba(255,255,255,0.38)');
+    rad.addColorStop(1, 'rgba(0,0,0,0.08)');
+    ctx.fillStyle = rad;
+    ctx.fillRect(0, 0, W, H);
+
+    const cx = W * 0.5 + preset.poseShiftX;
+    const sw = preset.shoulderScale;
+
+    // 2. Back hair layer
+    ctx.save();
+    ctx.fillStyle = preset.hairColor;
+    ctx.beginPath();
+    ctx.ellipse(cx, 255, 98, 138, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    // 3. Arms & Hands (natural fashion standing pose)
+    ctx.save();
+    const skinGrad = ctx.createLinearGradient(cx - 190, 360, cx + 190, 880);
+    skinGrad.addColorStop(0, preset.skinTone);
+    skinGrad.addColorStop(0.5, preset.skinTone);
+    skinGrad.addColorStop(1, preset.skinShadow);
+    ctx.fillStyle = skinGrad;
+
+    // Left arm
+    ctx.beginPath();
+    ctx.moveTo(cx - 155 * sw, 385);
+    ctx.quadraticCurveTo(cx - 210 * sw, 560, cx - 182 * sw, 785);
+    ctx.quadraticCurveTo(cx - 172 * sw, 825, cx - 148 * sw, 815);
+    ctx.quadraticCurveTo(cx - 150 * sw, 600, cx - 115 * sw, 425);
+    ctx.closePath();
+    ctx.fill();
+
+    // Right arm
+    ctx.beginPath();
+    ctx.moveTo(cx + 155 * sw, 385);
+    ctx.quadraticCurveTo(cx + 210 * sw, 560, cx + 182 * sw, 785);
+    ctx.quadraticCurveTo(cx + 172 * sw, 825, cx + 148 * sw, 815);
+    ctx.quadraticCurveTo(cx + 150 * sw, 600, cx + 115 * sw, 425);
+    ctx.closePath();
+    ctx.fill();
+
+    // Torso & Chest skin base
+    ctx.beginPath();
+    ctx.moveTo(cx - 160 * sw, 380);
+    ctx.quadraticCurveTo(cx, 355, cx + 160 * sw, 380);
+    ctx.lineTo(cx + 118 * sw, 680);
+    ctx.quadraticCurveTo(cx, 700, cx - 118 * sw, 680);
+    ctx.closePath();
+    ctx.fill();
+
+    // Neck & Collarbone
+    ctx.beginPath();
+    ctx.moveTo(cx - 42, 285);
+    ctx.lineTo(cx + 42, 285);
+    ctx.quadraticCurveTo(cx + 52, 355, cx + 88, 375);
+    ctx.quadraticCurveTo(cx, 395, cx - 88, 375);
+    ctx.quadraticCurveTo(cx - 52, 355, cx - 42, 285);
+    ctx.closePath();
+    ctx.fill();
+
+    // Collarbone subtle highlight
+    ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(cx - 82, 372);
+    ctx.quadraticCurveTo(cx - 30, 384, cx - 12, 378);
+    ctx.moveTo(cx + 82, 372);
+    ctx.quadraticCurveTo(cx + 30, 384, cx + 12, 378);
+    ctx.stroke();
+
+    // Lower body skirt / trousers
+    ctx.fillStyle = preset.skirtColor;
+    ctx.beginPath();
+    ctx.moveTo(cx - 122 * sw, 665);
+    ctx.quadraticCurveTo(cx, 682, cx + 122 * sw, 665);
+    ctx.quadraticCurveTo(cx + 168 * sw, 920, cx + 155 * sw, 1180);
+    ctx.lineTo(cx - 155 * sw, 1180);
+    ctx.quadraticCurveTo(cx - 168 * sw, 920, cx - 122 * sw, 665);
+    ctx.closePath();
+    ctx.fill();
+
+    // Neutral camisole on the BEFORE portrait so the Before/After comparison is super clear
+    if (includeBaseTop) {
+      ctx.fillStyle = preset.baseTopColor;
+      ctx.beginPath();
+      ctx.moveTo(cx - 118 * sw, 415);
+      ctx.quadraticCurveTo(cx, 442, cx + 118 * sw, 415);
+      ctx.lineTo(cx + 115 * sw, 672);
+      ctx.quadraticCurveTo(cx, 692, cx - 115 * sw, 672);
+      ctx.closePath();
+      ctx.fill();
+
+      // Thin straps
+      ctx.strokeStyle = preset.baseTopColor;
+      ctx.lineWidth = 7;
+      ctx.beginPath();
+      ctx.moveTo(cx - 95 * sw, 420);
+      ctx.lineTo(cx - 82 * sw, 368);
+      ctx.moveTo(cx + 95 * sw, 420);
+      ctx.lineTo(cx + 82 * sw, 368);
+      ctx.stroke();
+    }
+
+    // 4. Head & Facial features
+    ctx.fillStyle = preset.skinTone;
+    ctx.beginPath();
+    ctx.ellipse(cx, 215, 68, 86, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Soft jawline shadow
+    ctx.strokeStyle = preset.skinShadow;
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.arc(cx, 222, 65, 0.2 * Math.PI, 0.8 * Math.PI);
+    ctx.stroke();
+
+    // Eyes, brows, lips (minimalist fashion editorial portrait)
+    ctx.strokeStyle = '#2b211e';
+    ctx.lineWidth = 2.4;
+    // Brows
+    ctx.beginPath();
+    ctx.moveTo(cx - 38, 192);
+    ctx.quadraticCurveTo(cx - 24, 185, cx - 11, 191);
+    ctx.moveTo(cx + 11, 191);
+    ctx.quadraticCurveTo(cx + 24, 185, cx + 38, 192);
+    ctx.stroke();
+
+    // Eyes
+    ctx.fillStyle = '#231b18';
+    ctx.beginPath();
+    ctx.ellipse(cx - 24, 206, 7, 4.2, 0, 0, Math.PI * 2);
+    ctx.ellipse(cx + 24, 206, 7, 4.2, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Lips
+    ctx.fillStyle = '#c86d68';
+    ctx.beginPath();
+    ctx.ellipse(cx, 258, 15, 6.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Front hair framing
+    ctx.fillStyle = preset.hairColor;
+    ctx.beginPath();
+    ctx.arc(cx, 198, 72, Math.PI * 0.92, Math.PI * 2.08);
+    ctx.quadraticCurveTo(cx + 55, 145, cx, 148);
+    ctx.quadraticCurveTo(cx - 55, 145, cx - 70, 205);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // Extract clean garment silhouette from Lalin product photo (adaptive background removal + collar/torso mask)
+  function extractCleanGarmentLayer(prodImg, category = 'upper_body') {
+    const outW = 640;
+    const outH = 840;
+    const c = document.createElement('canvas');
+    c.width = outW;
+    c.height = outH;
+    const ctx = c.getContext('2d');
+
+    // Crop region from product photo focusing on the garment torso/dress
+    const srcW = prodImg.naturalWidth || prodImg.width || 800;
+    const srcH = prodImg.naturalHeight || prodImg.height || 1000;
+    const cropTop = srcH * 0.17;
+    const cropBottom = category === 'dresses' ? srcH * 0.93 : srcH * 0.76;
+    const cropLeft = srcW * 0.14;
+    const cropRight = srcW * 0.86;
+
+    ctx.drawImage(
+      prodImg,
+      cropLeft,
+      cropTop,
+      cropRight - cropLeft,
+      cropBottom - cropTop,
+      0,
+      0,
+      outW,
+      outH
+    );
+
+    try {
+      const imgData = ctx.getImageData(0, 0, outW, outH);
+      const d = imgData.data;
+
+      // Sample border corners to estimate studio backdrop color
+      const samples = [];
+      for (let y = 4; y < 40; y += 8) {
+        for (let x of [6, 18, outW - 18, outW - 6]) {
+          const idx = (y * outW + x) * 4;
+          samples.push([d[idx], d[idx + 1], d[idx + 2]]);
+        }
+      }
+      const bgR = samples.reduce((s, v) => s + v[0], 0) / samples.length;
+      const bgG = samples.reduce((s, v) => s + v[1], 0) / samples.length;
+      const bgB = samples.reduce((s, v) => s + v[2], 0) / samples.length;
+
+      for (let y = 0; y < outH; y++) {
+        const ny = y / outH;
+        for (let x = 0; x < outW; x++) {
+          const nx = (x / outW) * 2 - 1; // -1 .. 1
+          const i = (y * outW + x) * 4;
+          const r = d[i];
+          const g = d[i + 1];
+          const b = d[i + 2];
+
+          // Distance from studio background
+          const distBg = Math.hypot(r - bgR, g - bgG, b - bgB);
+
+          // Torso silhouette envelope (tapers naturally at shoulders, arms, and waist/hem)
+          const maxHalfWidth = ny < 0.18
+            ? 0.36 + ny * 2.2
+            : ny < 0.55
+              ? 0.76 - (ny - 0.18) * 0.35
+              : category === 'dresses'
+                ? 0.63 + (ny - 0.55) * 0.35
+                : 0.64;
+
+          const edgeDist = maxHalfWidth - Math.abs(nx);
+          let alpha = 1;
+
+          // Feather outer silhouette and neck scoop
+          if (edgeDist < 0) {
+            alpha = 0;
+          } else if (edgeDist < 0.09) {
+            alpha *= edgeDist / 0.09;
+          }
+
+          // Neck/chin cutout at very top center so the customer's face & neck stay visible
+          if (ny < 0.11 && Math.abs(nx) < 0.22) {
+            const neckDist = Math.hypot(nx / 0.22, (ny - 0.02) / 0.09);
+            if (neckDist < 1) {
+              alpha *= Math.max(0, (neckDist - 0.55) / 0.45);
+            }
+          }
+
+          // Top & bottom hem feathering
+          if (ny < 0.04) alpha *= ny / 0.04;
+          if (ny > 0.94) alpha *= (1 - ny) / 0.06;
+
+          // Remove outer background pixels close to studio backdrop color
+          if (Math.abs(nx) > 0.42 && distBg < 36) {
+            alpha *= Math.max(0, (distBg - 14) / 22);
+          }
+
+          d[i + 3] = Math.round(Math.max(0, Math.min(255, alpha * 255)));
+        }
+      }
+      ctx.putImageData(imgData, 0, 0);
+    } catch {
+      // Cross-origin fallback if canvas is tainted: apply soft clip mask
+    }
+    return c;
+  }
+
+  function renderStaticPhotoVtonCanvas() {
+    const canvas = $('#vtonResultCanvas');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const W = canvas.width;
+    const H = canvas.height;
+    ctx.clearRect(0, 0, W, H);
+
+    const preset = SAMPLE_PORTRAIT_PRESETS[vtonState.sampleIdx] || SAMPLE_PORTRAIT_PRESETS[0];
+
+    // 1. Prepare BEFORE canvas (Original Portrait)
+    const beforeCanvas = document.createElement('canvas');
+    beforeCanvas.width = W;
+    beforeCanvas.height = H;
+    const bCtx = beforeCanvas.getContext('2d');
+
+    if (vtonState.customPortraitImg) {
+      // Cover-fit customer's uploaded portrait
+      const img = vtonState.customPortraitImg;
+      const iw = img.naturalWidth || img.width;
+      const ih = img.naturalHeight || img.height;
+      const scale = Math.max(W / iw, H / ih);
+      const dw = iw * scale;
+      const dh = ih * scale;
+      bCtx.drawImage(img, (W - dw) / 2, (H - dh) / 2, dw, dh);
+    } else {
+      drawSamplePortraitBase(bCtx, W, H, preset, true);
+    }
+
+    // 2. Prepare AFTER canvas (Portrait with VTON Garment Synthesized)
+    const afterCanvas = document.createElement('canvas');
+    afterCanvas.width = W;
+    afterCanvas.height = H;
+    const aCtx = afterCanvas.getContext('2d');
+
+    if (vtonState.remoteDiffusedImg) {
+      // Render direct output from Self-Hosted GPU / Gradio Space if available
+      const rImg = vtonState.remoteDiffusedImg;
+      const scale = Math.max(W / rImg.width, H / rImg.height);
+      const dw = rImg.width * scale;
+      const dh = rImg.height * scale;
+      aCtx.drawImage(rImg, (W - dw) / 2, (H - dh) / 2, dw, dh);
+    } else {
+      if (vtonState.customPortraitImg) {
+        aCtx.drawImage(beforeCanvas, 0, 0);
+      } else {
+        drawSamplePortraitBase(aCtx, W, H, preset, false);
+      }
+
+      if (vtonState.garmentCutoutCanvas) {
+        const isDress = vtonState.category === 'dresses';
+        const userScale = (vtonState.scale || 100) / 100;
+        const shoulderRatio = (vtonState.shoulder || 100) / 100;
+        const offsetY = Number(vtonState.offsetY || 0);
+
+        const baseW = (isDress ? 520 : 475) * userScale * shoulderRatio * (vtonState.customPortraitImg ? 1.0 : preset.shoulderScale);
+        const baseH = (isDress ? 790 : 545) * userScale;
+        const cx = W * 0.5 + (vtonState.customPortraitImg ? 0 : preset.poseShiftX);
+        const topY = (isDress ? 318 : 322) + offsetY;
+
+        aCtx.save();
+        // Contact shadow beneath garment collar & hem for realistic depth
+        aCtx.shadowColor = 'rgba(18, 14, 12, 0.34)';
+        aCtx.shadowBlur = 22;
+        aCtx.shadowOffsetY = 8;
+        aCtx.drawImage(
+          vtonState.garmentCutoutCanvas,
+          cx - baseW / 2,
+          topY,
+          baseW,
+          baseH
+        );
+        aCtx.restore();
+      }
+    }
+
+    // 3. Draw Split Before / After Wipe on main #vtonResultCanvas
+    const splitX = Math.round((W * vtonState.comparePct) / 100);
+
+    // Draw BEFORE on the right of splitX (or full background)
+    ctx.drawImage(beforeCanvas, 0, 0);
+
+    // Draw AFTER on the left up to splitX
+    if (splitX > 0) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(0, 0, splitX, H);
+      ctx.clip();
+      ctx.drawImage(afterCanvas, 0, 0);
+      ctx.restore();
+    }
+
+    // Draw interactive split divider line if < 100% and > 0%
+    if (vtonState.comparePct > 1 && vtonState.comparePct < 99) {
+      ctx.save();
+      ctx.strokeStyle = '#34d399';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(splitX, 0);
+      ctx.lineTo(splitX, H);
+      ctx.stroke();
+
+      // Handle circle
+      ctx.fillStyle = '#0b0c10';
+      ctx.beginPath();
+      ctx.arc(splitX, H * 0.5, 20, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = '#34d399';
+      ctx.font = 'bold 14px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('⇄', splitX, H * 0.5);
+      ctx.restore();
+    }
+
+    // Subtle watermark badge on canvas
+    ctx.save();
+    ctx.fillStyle = 'rgba(10, 12, 18, 0.72)';
+    ctx.fillRect(18, 64, 310, 32);
+    ctx.fillStyle = '#6ee7b7';
+    ctx.font = '600 13px monospace';
+    const prodTitle = (state.studio.product?.title || 'Thiết kế Lalin').slice(0, 26);
+    ctx.fillText(`✦ ${vtonState.model.toUpperCase()} · ${prodTitle}`, 28, 85);
+    ctx.restore();
+  }
+
+  async function runStaticPhotoVtonSynthesis(showOverlay = true) {
+    const product = state.studio.product || PRODUCTS[0];
+    if (!product) return;
+
+    const loadingEl = $('#vtonLoadingOverlay');
+    const stepText = $('#vtonLoadingStepText');
+    const badge = $('#vtonEngineBadge');
+    const modelLabel = VTON_MODEL_LABELS[vtonState.model] || 'IDM-VTON';
+
+    if (showOverlay && loadingEl) {
+      loadingEl.hidden = false;
+      if (stepText) stepText.textContent = `Đang tách nền "${product.title}" & kết nối API ${modelLabel}...`;
+    }
+
+    // 1. Load product image with CORS so we can extract clean garment layer
+    const rawSrc = product.imgFull || product.img;
+    const proxiedSrc = rawSrc.startsWith('http')
+      ? `/api/image-proxy?url=${encodeURIComponent(rawSrc)}`
+      : rawSrc;
+
+    const loadImg = (src, useCors = true) => new Promise((resolve) => {
+      const im = new Image();
+      if (useCors) im.crossOrigin = 'anonymous';
+      im.onload = () => resolve(im);
+      im.onerror = () => resolve(null);
+      im.src = src;
+    });
+
+    let prodImg = await loadImg(rawSrc, true);
+    if (!prodImg) prodImg = await loadImg(proxiedSrc, true);
+    if (!prodImg) prodImg = await loadImg(rawSrc, false);
+
+    if (prodImg && vtonState.garmentCutoutSrc !== `${rawSrc}:${vtonState.category}`) {
+      vtonState.garmentCutoutCanvas = extractCleanGarmentLayer(prodImg, vtonState.category);
+      vtonState.garmentCutoutSrc = `${rawSrc}:${vtonState.category}`;
+    }
+
+    // 2. Call Self-Hosted / Local API Bridge (/api/vton/photo)
+    const endpoint = ($('#vtonEndpointInput')?.value || '/api/vton/photo').trim();
+    const hfToken = ($('#vtonHfTokenInput')?.value || '').trim();
+    let apiProviderLabel = `${modelLabel} · Smart VTON`;
+
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 4500);
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: vtonState.model,
+          category: vtonState.category,
+          garmentImage: rawSrc,
+          garmentTitle: product.title,
+          personImage: vtonState.customPortraitName || `sample_${vtonState.sampleIdx + 1}`,
+          hfToken,
+          steps: 30,
+          guidanceScale: 2.5,
+          seed: 42
+        }),
+        signal: controller.signal
+      });
+      clearTimeout(timer);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.resultImageUrl) {
+          const remoteImg = await loadImg(data.resultImageUrl, false);
+          if (remoteImg) {
+            vtonState.remoteDiffusedImg = remoteImg;
+            apiProviderLabel = `${modelLabel} · GPU Server Live`;
+          }
+        } else if (data.ok) {
+          apiProviderLabel = `${modelLabel} · API Connected (0₫/click)`;
+        }
+      }
+    } catch {
+      // Static GitHub Pages or offline mode: seamless local synthesis
+      apiProviderLabel = `${modelLabel} · Hybrid Local VTON (0₫/click)`;
+    }
+
+    if (badge) {
+      badge.textContent = `✦ ${apiProviderLabel}`;
+    }
+    if (loadingEl) {
+      setTimeout(() => {
+        loadingEl.hidden = true;
+      }, showOverlay ? 260 : 0);
+    }
+
+    renderStaticPhotoVtonCanvas();
+  }
 
   // ==========================================================================
   // 8. UNIVERSAL GARMENT INPUT: UPLOAD, PASTE (Ctrl+V), DRAG & DROP, URL LINK

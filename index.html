@@ -218,12 +218,52 @@
             <strong>Gói dùng thử miễn phí (Free Trial / Beta):</strong> Anywear cho phép cài đặt miễn phí lên cửa hàng và tặng sẵn một lượng credit miễn phí cho tài khoản mới để kiểm thử. Tuy nhiên, bản miễn phí này bị <strong>giới hạn lượt sử dụng (rate-limited)</strong> — chỉ đủ để bạn test và chứng minh hiệu quả trên store, không đủ để phục vụ toàn bộ lưu lượng khách truy cập thực tế.
           </p>
         </div>
+
+        <!-- 3. Open-Source Static Photo VTON Alternative (Zero Per-Click Licensing Fee) -->
+        <div class="aw-opensource-vton-box" id="opensource-vton-hub">
+          <div class="aw-policy-header">
+            <span class="aw-oss-badge">3. THỬ ĐỒ BẰNG ẢNH TĨNH — SELF-HOST OPEN-SOURCE / FREE API (0₫ PHÍ THEO LƯỢT)</span>
+            <span class="aw-oss-pill">IDM-VTON · CatVTON · OOTDiffusion</span>
+          </div>
+          <p class="aw-oss-desc">
+            Khi khách hàng muốn <strong>tải 1 tấm ảnh chân dung tĩnh lên để ghép đồ</strong> thay vì mở livestream camera, và bạn có sẵn <strong>Server/GPU</strong> hoặc dùng <strong>API miễn phí hạn mức thấp</strong>, hệ thống tích hợp sẵn cổng kết nối API riêng tới 3 mô hình mã nguồn mở hàng đầu — <strong>không tốn phí bản quyền theo từng lượt khách bấm</strong>:
+          </p>
+          <div class="aw-oss-models-grid">
+            <div class="aw-oss-model-card">
+              <div class="aw-oss-model-top">
+                <strong>IDM-VTON</strong>
+                <span>yisol/IDM-VTON</span>
+              </div>
+              <p>Giữ nguyên chi tiết hoa văn gấm, thêu tay, cúc ngọc và độ bóng tơ tằm Lalin chuẩn xác nhất.</p>
+            </div>
+            <div class="aw-oss-model-card">
+              <div class="aw-oss-model-top">
+                <strong>CatVTON</strong>
+                <span>zhengchong/CatVTON</span>
+              </div>
+              <p>Kiến trúc Concatenation gọn nhẹ (~899M tham số, chạy tốt trên GPU &lt; 8GB VRAM), tốc độ phản hồi nhanh.</p>
+            </div>
+            <div class="aw-oss-model-card">
+              <div class="aw-oss-model-top">
+                <strong>OOTDiffusion</strong>
+                <span>levihsu/OOTDiffusion</span>
+              </div>
+              <p>Outfitting Fusion hỗ trợ tùy chỉnh linh hoạt Half-Body (Áo/Cổ yếm) và Full-Body (Đầm/Nguyên set).</p>
+            </div>
+          </div>
+          <div class="aw-oss-cta-row">
+            <button type="button" class="btn-aw-oss-launch" id="hubOpenPhotoVtonBtn">
+              📸 Thử Đồ Bằng Ảnh Tĩnh Ngay (IDM-VTON / CatVTON / OOTDiffusion)
+            </button>
+            <span class="aw-oss-endpoint-tag">API Endpoint: <code>POST /api/vton/photo</code> + Gradio Space Bridge</span>
+          </div>
+        </div>
       </div>
 
       <!-- Right: Live 1-Line Script Embed Status + Universal Try-On Trigger Card -->
       <div class="anywear-hub-dropcard" id="hubDropZone">
         <div class="aw-drop-header">
-          <span class="aw-wordmark">Anywear<i class="aw-dot-sep"></i>Decart AI</span>
+          <span class="aw-wordmark">Anywear<i class="aw-dot-sep"></i>Decart AI + OpenVTON</span>
           <span class="aw-ext-badge" id="awExtStatusBadge">✦ Đang quét ảnh sản phẩm...</span>
         </div>
 
@@ -236,7 +276,7 @@
           <pre class="aw-script-pre"><code id="anywearScriptCode">&lt;script src="https://anywear.decart.ai/widget/latest/anywear.js" async&gt;&lt;/script&gt;</code></pre>
           <div class="aw-script-telemetry">
             <span id="awDetectedCountBadge">🟢 Tự động gắn nút Try-On trên toàn bộ ảnh sản phẩm</span>
-            <span>Free Trial / Beta (Rate-Limited)</span>
+            <span>Live Cam + Ảnh Tĩnh VTON</span>
           </div>
         </div>
 
@@ -247,15 +287,18 @@
               <circle cx="12" cy="13" r="4"/>
             </svg>
           </div>
-          <h3>Bấm nút <kbd>✦ Try-On</kbd> trên bất kỳ ảnh sản phẩm nào</h3>
-          <p>Hoặc mở trực tiếp <strong>AI Fitting Room</strong> của Anywear (Decart AI) / kéo thả ảnh trang phục bất kỳ vào khung thử đồ</p>
+          <h3>Chọn chế độ: <kbd>🎥 Live Camera</kbd> hoặc <kbd>📸 Ảnh Chân Dung Tĩnh</kbd></h3>
+          <p>Bấm <strong>Try-On</strong> để mở Camera thời gian thực (Anywear Decart AI) hoặc tải 1 tấm ảnh chân dung tĩnh để ghép đồ qua API <strong>IDM-VTON / CatVTON / OOTDiffusion</strong></p>
 
           <div class="aw-upload-btns">
             <button type="button" class="btn-aw-lime" id="hubOpenCameraNowBtn">
-              🎥 Mở AI Fitting Room (Anywear Camera)
+              🎥 Live Camera (Anywear)
+            </button>
+            <button type="button" class="btn-aw-photo-vton" id="hubOpenStaticPhotoBtn">
+              📸 Ghép Ảnh Tĩnh (IDM-VTON)
             </button>
             <button type="button" class="btn-aw-ghost" id="hubUploadBtn">
-              📷 Tải ảnh quần áo / Screenshot
+              📷 Tải ảnh quần áo
             </button>
             <input type="file" id="hubFileInput" accept="image/*" hidden />
           </div>
@@ -446,11 +489,19 @@
           </div>
 
           <div class="aw-top-actions">
+            <div class="vton-mode-tabs" role="tablist" aria-label="Chế độ thử đồ">
+              <button type="button" class="dock-mini-btn active" id="tabModeLiveCamBtn" role="tab" aria-selected="true" title="Xem ảnh sản phẩm &amp; Mở Camera trực tiếp Anywear (Decart AI)">
+                🎥 Live Camera (Anywear)
+              </button>
+              <button type="button" class="dock-mini-btn" id="tabModeStaticPhotoBtn" role="tab" aria-selected="false" title="Tải 1 tấm ảnh chân dung tĩnh lên để ghép đồ bằng IDM-VTON / CatVTON / OOTDiffusion (0₫ phí bản quyền)">
+                📸 Ghép Ảnh Tĩnh (IDM-VTON)
+              </button>
+            </div>
             <button type="button" class="dock-mini-btn" id="studioAddClothesBtn" title="Tải ảnh quần áo, dán screenshot (Ctrl+V) hoặc dán link">
-              + Thêm Ảnh / Link
+              + Thêm Đồ
             </button>
             <button type="button" class="dock-mini-btn active" id="studioLaunchDecartBtn" title="Mở Camera thử trực tiếp mẫu này bằng Anywear (Decart AI)">
-              🎥 Bật Camera Try-On (Anywear)
+              ✦ Bật Camera
             </button>
           </div>
         </div>
@@ -464,6 +515,127 @@
             id="studioMainImage"
             data-product-image="true"
           />
+
+          <!-- ===============================================================
+               STATIC PHOTO VIRTUAL TRY-ON PANEL (IDM-VTON / CatVTON / OOTDiffusion)
+               Zero per-click licensing fee · Self-Hosted GPU or Free Quota API
+               =============================================================== -->
+          <div class="vton-static-panel" id="studioStaticPhotoPanel" hidden>
+            <!-- Top Config Strip: Open-Source Model + Garment Category + API Endpoint -->
+            <div class="vton-config-bar">
+              <div class="vton-config-row">
+                <div class="vton-field-group">
+                  <label for="vtonModelSelect">MÔ HÌNH OPEN-SOURCE:</label>
+                  <select id="vtonModelSelect" class="vton-select">
+                    <option value="idm-vton">IDM-VTON (yisol/IDM-VTON · Giữ nét gấm/tơ HD)</option>
+                    <option value="catvton">CatVTON (zhengchong/CatVTON · Nhẹ &lt;8GB VRAM)</option>
+                    <option value="ootdiffusion">OOTDiffusion (levihsu/OOTDiffusion · Half/Full Body)</option>
+                  </select>
+                </div>
+
+                <div class="vton-field-group">
+                  <label for="vtonCategorySelect">VÙNG TRANG PHỤC:</label>
+                  <select id="vtonCategorySelect" class="vton-select">
+                    <option value="upper_body">Thân trên (Áo / Cổ Yếm / Khoác)</option>
+                    <option value="dresses">Nguyên bộ / Đầm (Full-body / Dress)</option>
+                  </select>
+                </div>
+
+                <button type="button" class="dock-mini-btn" id="vtonToggleApiConfigBtn" title="Cấu hình Server GPU tự host hoặc Gradio API miễn phí">
+                  ⚙ Cấu hình API / GPU
+                </button>
+              </div>
+
+              <!-- Collapsible Self-Hosted / Free Gradio API Endpoint Drawer -->
+              <div class="vton-api-drawer" id="vtonApiDrawer" hidden>
+                <div class="vton-api-grid">
+                  <div>
+                    <label for="vtonEndpointInput">URL API Riêng (Self-Hosted GPU / FastAPI / Gradio Space):</label>
+                    <input
+                      type="text"
+                      id="vtonEndpointInput"
+                      class="vton-text-input"
+                      value="/api/vton/photo"
+                      placeholder="VD: /api/vton/photo hoặc https://your-gpu-server.com/api/vton/photo"
+                    />
+                  </div>
+                  <div>
+                    <label for="vtonHfTokenInput">HuggingFace Token (Tùy chọn — tăng quota Gradio miễn phí):</label>
+                    <input
+                      type="password"
+                      id="vtonHfTokenInput"
+                      class="vton-text-input"
+                      placeholder="hf_... (để trống nếu dùng Server nội bộ)"
+                    />
+                  </div>
+                </div>
+                <div class="vton-api-foot">
+                  <span>💡 Tự host <strong>IDM-VTON / CatVTON / OOTDiffusion</strong> trên GPU cá nhân hoặc Colab/RunPod rồi điền URL vào trên — <strong>0₫ phí bản quyền theo lượt bấm</strong>.</span>
+                  <button type="button" class="aw-copy-code-btn" id="vtonCopyServerCodeBtn">📋 Copy Code Python Server Mẫu</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Middle Interactive Stage: Portrait Input + Before/After Synthesized Result -->
+            <div class="vton-stage-body">
+              <!-- Portrait Upload & Sample Presets Strip -->
+              <div class="vton-portrait-strip">
+                <div class="vton-portrait-actions">
+                  <button type="button" class="btn-vton-upload" id="vtonUploadPortraitBtn">
+                    📤 Tải 1 Ảnh Chân Dung Lên
+                  </button>
+                  <input type="file" id="vtonPortraitFileInput" accept="image/*" hidden />
+
+                  <div class="vton-sample-Variable">
+                    <span class="vton-sample-label">Hoặc chọn mẫu thử:</span>
+                    <button type="button" class="vton-sample-chip active" data-sample-portrait="0">Mẫu 01 (Chính diện)</button>
+                    <button type="button" class="vton-sample-chip" data-sample-portrait="1">Mẫu 02 (Ánh nắng)</button>
+                    <button type="button" class="vton-sample-chip" data-sample-portrait="2">Mẫu 03 (Studio)</button>
+                  </div>
+                </div>
+
+                <button type="button" class="btn-vton-generate" id="vtonRunSynthesizeBtn">
+                  ✨ Ghép Đồ Lên Ảnh Tĩnh
+                </button>
+              </div>
+
+              <!-- Before / After Comparison Canvas Container -->
+              <div class="vton-canvas-viewport" id="vtonCanvasViewport">
+                <canvas id="vtonResultCanvas" width="900" height="1200"></canvas>
+
+                <!-- Processing Status Overlay -->
+                <div class="vton-loading-overlay" id="vtonLoadingOverlay" hidden>
+                  <div class="vton-spinner"></div>
+                  <p id="vtonLoadingStepText">Đang tách nền trang phục &amp; chạy mô hình IDM-VTON...</p>
+                  <small id="vtonLoadingSubText">Self-Hosted / Hybrid Open-Source VTON Pipeline · 0₫ Per-Click</small>
+                </div>
+
+                <!-- Floating Telemetry & Before/After Slider Pill -->
+                <div class="vton-hud-top">
+                  <span class="vton-engine-pill" id="vtonEngineBadge">✦ IDM-VTON · Sẵn sàng ghép ảnh tĩnh</span>
+                  <button type="button" class="vton-download-pill" id="vtonDownloadBtn" title="Tải ảnh kết quả thử đồ về máy">
+                    ⬇ Tải Ảnh (PNG)
+                  </button>
+                </div>
+
+                <!-- Interactive Before/After Wipe Slider + Fine-Tune Fit Bar -->
+                <div class="vton-bottom-hud">
+                  <div class="vton-wipe-row">
+                    <span>Ảnh gốc</span>
+                    <input type="range" id="vtonCompareSlider" min="0" max="100" value="100" aria-label="So sánh Trước và Sau khi ghép đồ" />
+                    <span id="vtonCompareLabel">Kết quả VTON: 100%</span>
+                  </div>
+
+                  <div class="vton-finetune-row" title="Tinh chỉnh vị trí và kích thước áo khớp với mọi góc chụp ảnh chân dung">
+                    <label>Cao/Thấp <input type="range" id="vtonOffsetY" min="-140" max="140" value="0" /></label>
+                    <label>Cỡ áo <input type="range" id="vtonScale" min="70" max="135" value="100" /></label>
+                    <label>Mở vai <input type="range" id="vtonShoulder" min="80" max="125" value="100" /></label>
+                    <button type="button" class="vton-reset-fit-btn" id="vtonResetFitBtn">Mặc định</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
 
           <!-- Gemini Vision box_2d Garment Detection Overlay (from uiharu-kazari/anywear) -->
           <div class="aw-box2d-overlay" id="studioBox2dOverlay" hidden>
@@ -529,10 +701,13 @@
 
           <div class="aw-cam-controls">
             <button type="button" class="btn-aw-camera-start" id="modeWebcamBtn">
-              🎥 Bấm Try-On Qua Camera (Anywear Decart AI)
+              🎥 Bấm Try-On Camera (Anywear)
+            </button>
+            <button type="button" class="btn-aw-photo-vton" id="modeStaticPhotoBtn" title="Ghép thiết kế này lên ảnh chân dung tĩnh qua IDM-VTON / CatVTON / OOTDiffusion">
+              📸 Ghép Ảnh Tĩnh (IDM-VTON)
             </button>
             <button type="button" class="dock-mini-btn" id="studioDetectBox2dBtn" title="Quét tách vùng trang phục box_2d [ymin,xmin,ymax,xmax] bằng AI Vision">
-              🔍 Quét vùng áo (box_2d)
+              🔍 Tách Vùng Áo
             </button>
           </div>
         </div>
