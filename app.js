@@ -143,22 +143,52 @@
   function triggerAnywearTryOn(product, preferredImgEl = null) {
     const p = product || state.studio.product || PRODUCTS[0];
     const garmentUrl = p?.imgFull || p?.img || '';
+    const isStandardProduct = p?.id && PRODUCTS.some((x) => x.id === p.id);
 
     // Close our Quick-View modal if open so Decart AI's Anywear camera widget is unobstructed
     if (modal?.classList.contains('open')) {
       closeStudio();
     }
 
-    // 1. Find the best target <img> on the page that has (or can receive) Decart AI's .vton-btn
-    let imgEl = preferredImgEl;
-    if (!imgEl || !document.body.contains(imgEl)) {
-      imgEl = (p?.id && $(`#productGrid img[data-garment-id="${p.id}"][data-product-image="true"]`))
-        || (p?.id && $(`#lookbookTrack img[data-garment-id="${p.id}"][data-product-image="true"]`))
-        || $('.hero-layer-base')
-        || $('img[data-product-image="true"]');
+    // 1. For custom uploaded garments or external links, directly open DecartWidget with postMessage
+    if (!isStandardProduct && garmentUrl) {
+      if (window.DecartWidget && typeof window.DecartWidget.open === 'function') {
+        window.DecartWidget.open({ mobileCamera: 'user' });
+        const deliverToIframe = (delay) => setTimeout(() => {
+          const iframe = document.querySelector('#__decart-tryon-widget iframe');
+          if (iframe && iframe.contentWindow) {
+            iframe.contentWindow.postMessage({
+              type: 'DECART_IMAGE_BTN_CLICK',
+              url: garmentUrl,
+              camera: 'user',
+              imgNaturalW: 1024,
+              imgNaturalH: 1024
+            }, '*');
+            iframe.contentWindow.postMessage({
+              type: 'DECART_DROP_IMAGE',
+              url: garmentUrl
+            }, '*');
+          }
+        }, delay);
+        [250, 700, 1400].forEach(deliverToIframe);
+        showToast(`Đã mở Camera Anywear (Decart AI) cho trang phục "${p?.title || 'tải lên'}"!`);
+        return true;
+      }
     }
 
-    // 2. If `anywear.js` pinned a `.vton-btn` inside the image's container, click it directly!
+    // 2. Find the best target <img> on the page that has (or can receive) Decart AI's .vton-btn
+    let imgEl = preferredImgEl;
+    if (!imgEl || !document.body.contains(imgEl)) {
+      if (isStandardProduct) {
+        imgEl = $(`#productGrid img[data-garment-id="${p.id}"][data-product-image="true"]`)
+          || $(`#lookbookTrack img[data-garment-id="${p.id}"][data-product-image="true"]`);
+      }
+      if (!imgEl) {
+        imgEl = $('.hero-layer-base') || $('img[data-product-image="true"]');
+      }
+    }
+
+    // 3. If `anywear.js` pinned a `.vton-btn` inside the image's container, click it directly!
     if (imgEl && imgEl.parentElement) {
       const vtonBtn = imgEl.parentElement.querySelector('.vton-btn');
       if (vtonBtn) {
@@ -168,7 +198,7 @@
       }
     }
 
-    // 3. Fallback: check any `.vton-btn` or hover `#__decart-imgbtn`
+    // 4. Fallback: check any `.vton-btn` or hover `#__decart-imgbtn`
     if (imgEl) {
       imgEl.dispatchEvent(new MouseEvent('mouseover', { bubbles: true, cancelable: true }));
       const hoverBtn = document.getElementById('__decart-imgbtn');
@@ -181,9 +211,9 @@
       }
     }
 
-    // 4. Direct DecartWidget API + postMessage delivery for custom/uploaded garment URLs
+    // 5. Direct DecartWidget API + postMessage delivery for custom/uploaded garment URLs
     if (window.DecartWidget && typeof window.DecartWidget.open === 'function') {
-      window.DecartWidget.open();
+      window.DecartWidget.open({ mobileCamera: 'user' });
       if (garmentUrl && !garmentUrl.startsWith('data:')) {
         const deliverToIframe = (delay) => setTimeout(() => {
           const iframe = document.querySelector('#__decart-tryon-widget iframe');
@@ -191,6 +221,7 @@
             iframe.contentWindow.postMessage({
               type: 'DECART_IMAGE_BTN_CLICK',
               url: garmentUrl,
+              camera: 'user',
               imgNaturalW: 1024,
               imgNaturalH: 1024
             }, '*');
@@ -200,14 +231,13 @@
             }, '*');
           }
         }, delay);
-        deliverToIframe(250);
-        deliverToIframe(900);
+        [250, 700, 1400].forEach(deliverToIframe);
       }
       showToast(`Đã mở phòng thử đồ trực tiếp Anywear (Decart AI) cho "${p?.title || 'sản phẩm'}"!`);
       return true;
     }
 
-    // 5. Click the floating #__decart-pill-btn if present
+    // 6. Click the floating #__decart-pill-btn if present
     const pillBtn = document.getElementById('__decart-pill-btn');
     if (pillBtn) {
       pillBtn.click();
@@ -383,7 +413,7 @@
     const items = lookbookItems(state.lookbookFilter);
     lookbookTrack.innerHTML = items.map((p, i) => `
       <article class="lookbook-card" data-id="${p.id}" data-cursor="DRAG ↔">
-        <div class="lookbook-media-wrap">
+        <div class="lookbook-media-wrap" data-decart-mobile-camera="user">
           <img src="${p.img}" alt="${esc(p.title)}" class="lookbook-img-primary" loading="${i < 6 ? 'eager' : 'lazy'}" draggable="true" data-garment-id="${p.id}" data-product-image="true" data-product-name="${esc(p.title)}" />
           <img src="${p.imgAlt}" alt="${esc(p.title)} — góc khác" class="lookbook-img-secondary" loading="lazy" draggable="true" data-garment-id="${p.id}" />
           <div class="anywear-card-overlay">
@@ -617,7 +647,7 @@
     const colors = p.colors.length ? ` · ${esc(p.colors.join(' / '))}` : '';
     return `
       <article class="product-card" data-product-id="${p.id}">
-        <div class="product-media" data-cursor="TRY-ON LIVE">
+        <div class="product-media" data-cursor="TRY-ON LIVE" data-decart-mobile-camera="user">
           <img src="${p.img}" alt="${esc(p.title)}" class="product-img-main" loading="${idx < 6 ? 'eager' : 'lazy'}" draggable="true" data-garment-id="${p.id}" data-product-image="true" data-product-name="${esc(p.title)}" />
           <img src="${p.imgAlt}" alt="${esc(p.title)} — góc khác" class="product-img-alt" loading="lazy" draggable="true" data-garment-id="${p.id}" />
           <div class="fabric-loupe"><span class="loupe-caption">X-RAY: ${esc(p.fabric)}</span></div>
@@ -934,6 +964,7 @@
   }
 
   $('#closeAnywearModalBtn')?.addEventListener('click', closeStudio);
+  $('#modalTopCloseBtn')?.addEventListener('click', closeStudio);
   modal?.addEventListener('click', (e) => { if (e.target === modal) closeStudio(); });
 
   // Launch Decart AI's Anywear Camera directly from the Quick-View Modal
@@ -1066,15 +1097,10 @@
     });
   });
 
-  $('#vtonUploadPortraitBtn')?.addEventListener('click', () => {
-    $('#vtonPortraitFileInput')?.click();
-  });
-
-  $('#vtonPortraitFileInput')?.addEventListener('change', (e) => {
-    const file = e.target.files?.[0];
+  function handlePortraitFile(file, isSelfie = false) {
     if (!file) return;
     if (!file.type.startsWith('image/')) {
-      showToast('Vui lòng chọn file ảnh chân dung (JPG, PNG, WebP).');
+      showToast('Vui lòng chọn file ảnh chân dung hợp lệ (JPG, PNG, WebP).');
       return;
     }
     const reader = new FileReader();
@@ -1082,21 +1108,77 @@
       const img = new Image();
       img.onload = () => {
         vtonState.customPortraitImg = img;
-        vtonState.customPortraitName = file.name.replace(/\.[^.]+$/, '').slice(0, 28);
+        vtonState.customPortraitName = isSelfie ? 'Selfie Camera' : file.name.replace(/\.[^.]+$/, '').slice(0, 28);
         vtonState.remoteDiffusedImg = null;
         $$('[data-sample-portrait]').forEach((b) => b.classList.remove('active'));
-        showToast(`Đã tải ảnh chân dung "${vtonState.customPortraitName}" — đang ghép trang phục bằng ${VTON_MODEL_LABELS[vtonState.model]}!`);
+        showToast(`Đã nạp ảnh chân dung "${vtonState.customPortraitName}" — đang ghép trang phục bằng ${VTON_MODEL_LABELS[vtonState.model]}!`);
         runStaticPhotoVtonSynthesis(true);
       };
       img.src = String(reader.result);
     };
     reader.readAsDataURL(file);
+  }
+
+  $('#vtonUploadPortraitBtn')?.addEventListener('click', () => {
+    $('#vtonPortraitFileInput')?.click();
+  });
+  $('#vtonTakeSelfieBtn')?.addEventListener('click', () => {
+    $('#vtonSelfieCaptureInput')?.click();
+  });
+
+  $('#vtonPortraitFileInput')?.addEventListener('change', (e) => {
+    if (e.target.files?.[0]) handlePortraitFile(e.target.files[0], false);
+    e.target.value = '';
+  });
+  $('#vtonSelfieCaptureInput')?.addEventListener('change', (e) => {
+    if (e.target.files?.[0]) handlePortraitFile(e.target.files[0], true);
     e.target.value = '';
   });
 
   $('#vtonRunSynthesizeBtn')?.addEventListener('click', () => {
     runStaticPhotoVtonSynthesis(true);
   });
+
+  // Direct touch & mouse wipe across the canvas viewport for natural mobile/desktop comparison
+  const vtonViewport = $('#vtonCanvasViewport');
+  if (vtonViewport) {
+    let isWiping = false;
+    const applyWipe = (clientX) => {
+      const rect = vtonViewport.getBoundingClientRect();
+      if (!rect.width) return;
+      const pct = Math.max(0, Math.min(100, Math.round(((clientX - rect.left) / rect.width) * 100)));
+      vtonState.comparePct = pct;
+      const slider = $('#vtonCompareSlider');
+      if (slider) slider.value = String(pct);
+      const lbl = $('#vtonCompareLabel');
+      if (lbl) lbl.textContent = `Kết quả VTON: ${pct}%`;
+      renderStaticPhotoVtonCanvas();
+    };
+
+    vtonViewport.addEventListener('mousedown', (e) => {
+      if (e.target.closest('button, input, label')) return;
+      isWiping = true;
+      applyWipe(e.clientX);
+    });
+    window.addEventListener('mousemove', (e) => {
+      if (!isWiping) return;
+      applyWipe(e.clientX);
+    });
+    window.addEventListener('mouseup', () => { isWiping = false; });
+
+    vtonViewport.addEventListener('touchstart', (e) => {
+      if (e.target.closest('button, input, label')) return;
+      if (e.touches[0]) {
+        isWiping = true;
+        applyWipe(e.touches[0].clientX);
+      }
+    }, { passive: true });
+    vtonViewport.addEventListener('touchmove', (e) => {
+      if (!isWiping) return;
+      if (e.touches[0]) applyWipe(e.touches[0].clientX);
+    }, { passive: true });
+    window.addEventListener('touchend', () => { isWiping = false; });
+  }
 
   $('#vtonCompareSlider')?.addEventListener('input', (e) => {
     vtonState.comparePct = Number(e.target.value);
@@ -1607,7 +1689,9 @@ def run_vton(req: VtonRequest):
 
     const loadImg = (src, useCors = true) => new Promise((resolve) => {
       const im = new Image();
-      if (useCors) im.crossOrigin = 'anonymous';
+      if (useCors && !src.startsWith('blob:') && !src.startsWith('data:')) {
+        im.crossOrigin = 'anonymous';
+      }
       im.onload = () => resolve(im);
       im.onerror = () => resolve(null);
       im.src = src;

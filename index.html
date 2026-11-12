@@ -113,7 +113,7 @@
     </div>
 
     <!-- HERO RIGHT: Interactive Split-Wipe Anywear Stage -->
-    <div class="hero-stage-card" id="heroInteractiveStage" data-cursor="SCRUB AR">
+    <div class="hero-stage-card" id="heroInteractiveStage" data-cursor="SCRUB AR" data-decart-mobile-camera="user">
       <div class="hero-hud-top">
         <div class="hud-badge">
           <span class="aw-lime-dot"></span>
@@ -477,6 +477,9 @@
        ========================================================================= -->
   <div class="anywear-modal-backdrop" id="anywearModal" aria-hidden="true">
     <div class="anywear-studio-window" role="dialog" aria-labelledby="studioProductTitle">
+      <!-- Universal Modal Close Button (Accessible & Always Visible on Desktop, Tablet & Mobile) -->
+      <button type="button" class="close-studio-btn aw-modal-top-close" id="modalTopCloseBtn" title="Đóng cửa sổ thử đồ (Esc)" aria-label="Đóng">✕</button>
+
       <!-- Left: Clean High-Res Product Stage & Direct Anywear Camera Trigger -->
       <div class="studio-viewport-panel" id="studioDropViewport">
         <div class="studio-top-bar">
@@ -507,7 +510,7 @@
         </div>
 
         <!-- Main Product Image Stage -->
-        <div class="studio-visual-stage" id="studioVisualStage">
+        <div class="studio-visual-stage" id="studioVisualStage" data-decart-mobile-camera="user">
           <img
             src="https://cdn.hstatic.net/products/200000066564/ao_to_tam_co_yem_ha_lam_-_10___1__5b6bb708072c4121a149e3d168fedf21_1024x1024.jpg"
             alt="Lalin Product Preview"
@@ -581,13 +584,17 @@
               <!-- Portrait Upload & Sample Presets Strip -->
               <div class="vton-portrait-strip">
                 <div class="vton-portrait-actions">
-                  <button type="button" class="btn-vton-upload" id="vtonUploadPortraitBtn">
-                    📤 Tải 1 Ảnh Chân Dung Lên
+                  <button type="button" class="btn-vton-upload" id="vtonUploadPortraitBtn" title="Chọn ảnh chân dung từ máy tính hoặc thư viện ảnh">
+                    📤 Tải Ảnh Chân Dung
+                  </button>
+                  <button type="button" class="btn-vton-selfie" id="vtonTakeSelfieBtn" title="Chụp ảnh selfie trực tiếp từ điện thoại hoặc webcam">
+                    🤳 Chụp Selfie
                   </button>
                   <input type="file" id="vtonPortraitFileInput" accept="image/*" hidden />
+                  <input type="file" id="vtonSelfieCaptureInput" accept="image/*" capture="user" hidden />
 
                   <div class="vton-sample-Variable">
-                    <span class="vton-sample-label">Hoặc chọn mẫu thử:</span>
+                    <span class="vton-sample-label">Hoặc mẫu thử:</span>
                     <button type="button" class="vton-sample-chip active" data-sample-portrait="0">Mẫu 01 (Chính diện)</button>
                     <button type="button" class="vton-sample-chip" data-sample-portrait="1">Mẫu 02 (Ánh nắng)</button>
                     <button type="button" class="vton-sample-chip" data-sample-portrait="2">Mẫu 03 (Studio)</button>

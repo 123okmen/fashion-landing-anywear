@@ -1268,8 +1268,19 @@ body {
 
 .product-actions {
   display: grid;
-  grid-template-columns: 1.2fr 0.8fr;
-  gap: 8px;
+  grid-template-columns: 1.15fr 1fr 0.85fr;
+  gap: 6px;
+  align-items: stretch;
+}
+
+@media (max-width: 560px) {
+  .product-actions {
+    grid-template-columns: 1fr 1fr;
+    gap: 7px;
+  }
+  .product-actions .btn-book-item {
+    grid-column: span 2;
+  }
 }
 
 .btn-anywear-card {
@@ -3347,9 +3358,7 @@ body.modal-open { overflow: hidden; }
   display: none !important;
 }
 
-body.modal-open #__decart-tryon-widget:not(:has(iframe)) {
-  display: none !important;
-}
+/* Decart tryon widget permitted in modal */
 
 /* 3. Anywear (Decart AI) 1-Line Script Embed & Free Trial Policy UI */
 .aw-section-subhead {
@@ -4174,3 +4183,80 @@ body.modal-open #__decart-tryon-widget:not(:has(iframe)) {
 
 
 
+
+
+/* Top Modal Universal Close Button */
+.aw-modal-top-close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 60;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: rgba(14, 16, 22, 0.88);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 17px;
+  cursor: pointer;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
+  transition: all 0.2s ease;
+}
+
+.aw-modal-top-close:hover {
+  background: var(--accent-red);
+  border-color: var(--accent-red);
+  transform: rotate(90deg);
+}
+
+.btn-vton-selfie {
+  background: rgba(16, 185, 129, 0.15);
+  border: 1px solid rgba(16, 185, 129, 0.4);
+  color: #6ee7b7;
+  padding: 6px 11px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.btn-vton-selfie:hover {
+  background: rgba(16, 185, 129, 0.28);
+  border-color: #34d399;
+  color: #fff;
+}
+
+/* Touch improvements for Lookbook */
+.lookbook-viewport {
+  touch-action: pan-x pan-y pinch-zoom;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Mobile Polish */
+@media (max-width: 768px) {
+  .aw-modal-top-close {
+    top: 10px;
+    right: 10px;
+    width: 34px;
+    height: 34px;
+    font-size: 15px;
+  }
+  .studio-viewport-panel {
+    height: min(62vh, 520px) !important;
+    min-height: 380px !important;
+  }
+  .vton-portrait-actions {
+    gap: 6px;
+  }
+  .vton-config-row {
+    gap: 6px;
+  }
+}
