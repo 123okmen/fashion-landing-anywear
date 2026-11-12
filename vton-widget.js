@@ -249,6 +249,8 @@ export class VirtualTryOnWidget {
       meshTightness: 85,   // 20%..100% body contour wrap
       shading3D: true,     // 3D cylindrical volume lighting & ambient occlusion
       organicMotion: true, // Respiration expansion & fabric sway inertia
+      fabricSmoothness: 88, // 30%..100% fabric softness, edge feathering & micro-texture
+      organicCreases: true, // Natural draping folds, collar insertion & tension wrinkles
     };
 
     // Static Photo State
@@ -1205,30 +1207,28 @@ export class VirtualTryOnWidget {
       const v = r / GRID_ROWS;
       const row = [];
 
-      // Smooth anatomical profile along torso
-      // v=0: shoulders/collar, v=0.35: underarms/chest, v=0.65: waist, v=1.0: bottom hem
-      const t = v * v * (3 - 2 * v); // Hermite smoothstep
+      // Hermite smoothstep curve along torso
+      const t = v * v * (3 - 2 * v);
 
-      // Interpolate torso flanks between shoulder anchors and hip anchors
-      const flankL = {
-        x: (1 - t) * sLeft.x + t * hLeft.x,
-        y: (1 - t) * sLeft.y + t * hLeft.y,
-      };
-      const flankR = {
-        x: (1 - t) * sRight.x + t * hRight.x,
-        y: (1 - t) * sRight.y + t * hRight.y,
-      };
-
-      // Flank vector and center
+      // Row center hangs naturally along spine from collarTopDrop to (collarTopDrop + drawH)
+      const vertOffset = collarTopDrop + v * drawH;
       const rowMid = {
-        x: (flankL.x + flankR.x) / 2,
-        y: (flankL.y + flankR.y) / 2,
+        x: shoulderMid.x + uSpineX * vertOffset,
+        y: shoulderMid.y + uSpineY * vertOffset,
       };
-      const rowDx = flankR.x - flankL.x;
-      const rowDy = flankR.y - flankL.y;
-      const rawSpan = Math.max(20, Math.hypot(rowDx, rowDy));
-      const rowUnitX = rowDx / rawSpan;
-      const rowUnitY = rowDy / rawSpan;
+
+      // Lateral unit vector blending smoothly from shoulder tilt to hip tilt
+      const hipDx = hRight.x - hLeft.x;
+      const hipDy = hRight.y - hLeft.y;
+      const hipSpanLen = Math.max(20, Math.hypot(hipDx, hipDy));
+      const uHipX = hipDx / hipSpanLen;
+      const uHipY = hipDy / hipSpanLen;
+
+      const blendRowX = (1 - t) * uShX + t * uHipX;
+      const blendRowY = (1 - t) * uShY + t * uHipY;
+      const rowUnitLen = Math.hypot(blendRowX, blendRowY) || 1;
+      const uRowX = blendRowX / rowUnitLen;
+      const uRowY = blendRowY / rowUnitLen;
 
       // Natural anatomical width profile (wide shoulders, tailored torso taper, organic hem)
       let widthRatio = 1.0;
@@ -1242,20 +1242,15 @@ export class VirtualTryOnWidget {
         widthRatio = (0.91 - 0.18 * tightness) + wt * (0.05 + (1 - tightness) * 0.08);
       }
 
-      const rowSpan = (effectiveTotalW * (rawSpan / shoulderWidth)) * widthRatio * 0.5;
+      const rowSpan = effectiveTotalW * widthRatio * 0.5;
 
       for (let c = 0; c <= GRID_COLS; c++) {
         const u = c / GRID_COLS;
         const xi = 2 * u - 1; // -1 (left edge) .. 0 (center) .. 1 (right edge)
 
         // Base horizontal position across the row
-        let px = rowMid.x + rowUnitX * (xi * rowSpan) + (centerShiftX || 0);
-        let py = rowMid.y + rowUnitY * (xi * rowSpan);
-
-        // Vertical positioning along garment height
-        const vertOffset = collarTopDrop + v * drawH;
-        px += uSpineX * vertOffset;
-        py += uSpineY * vertOffset;
+        let px = rowMid.x + uRowX * (xi * rowSpan) + (centerShiftX || 0);
+        let py = rowMid.y + uRowY * (xi * rowSpan);
 
         // Shoulder & sleeve anatomical downward slope (deltoids & arms drape down naturally)
         if (!isBackpack) {
@@ -1296,8 +1291,8 @@ export class VirtualTryOnWidget {
         // 4. 3D Body Yaw Perspective (Logo and fabric compression on turned torso)
         if (Math.abs(yaw) > 0.04 && !isBackpack) {
           const yawShift = (1 - xi * xi) * yaw * (shoulderWidth * 0.12);
-          px += rowUnitX * yawShift;
-          py += rowUnitY * yawShift;
+          px += uRowX * yawShift;
+          py += uRowY * yawShift;
         }
 
         // 5. Apply User Calibration Offsets & Rotation
@@ -1509,7 +1504,8 @@ export class VirtualTryOnWidget {
   }
 
   /**
-   * 3D Cylindrical Volume Shading & Torso Ambient Occlusion
+   * 3D Cylindrical Volume Shading, Fabric Micro-Texture, Creases & Collar Insertion
+   * Creates the authentic tactile feeling of real fabric being worn on the body.
    */
   _renderGarment3DShading(ctx, fit, settings) {
     if (!fit.mesh || fit.mesh.length < 3) return;
@@ -1517,11 +1513,16 @@ export class VirtualTryOnWidget {
     const rows = mesh.length;
     const cols = mesh[0].length;
     const midCol = Math.floor(cols / 2);
+    const smoothness = Math.max(0.2, Math.min(1.0, (Number(settings.fabricSmoothness) || 88) / 100));
+    const showCreases = settings.organicCreases !== false;
 
     ctx.save();
-    // 1. Torso cylindrical rim shadows (flank shadow giving 3D cylindrical body shape)
+
+    // =========================================================================
+    // 1. TORSO CYLINDRICAL AMBIENT OCCLUSION & FLANK WRAP SHADOWS
+    // =========================================================================
     ctx.globalCompositeOperation = 'multiply';
-    ctx.globalAlpha = 0.18;
+    ctx.globalAlpha = 0.20 * smoothness;
 
     // Left flank shadow
     for (let r = 0; r < rows - 1; r++) {
@@ -1531,7 +1532,8 @@ export class VirtualTryOnWidget {
       const p3 = mesh[r + 1][0];
 
       const grad = ctx.createLinearGradient(p0.x, p0.y, p1.x, p1.y);
-      grad.addColorStop(0, 'rgba(0,0,0,0.45)');
+      grad.addColorStop(0, 'rgba(0,0,0,0.48)');
+      grad.addColorStop(0.5, 'rgba(0,0,0,0.18)');
       grad.addColorStop(1, 'rgba(0,0,0,0)');
       ctx.fillStyle = grad;
       ctx.beginPath();
@@ -1551,7 +1553,8 @@ export class VirtualTryOnWidget {
       const p3 = mesh[r + 1][cols - 2];
 
       const grad = ctx.createLinearGradient(p1.x, p1.y, p0.x, p0.y);
-      grad.addColorStop(0, 'rgba(0,0,0,0.45)');
+      grad.addColorStop(0, 'rgba(0,0,0,0.48)');
+      grad.addColorStop(0.5, 'rgba(0,0,0,0.18)');
       grad.addColorStop(1, 'rgba(0,0,0,0)');
       ctx.fillStyle = grad;
       ctx.beginPath();
@@ -1563,27 +1566,162 @@ export class VirtualTryOnWidget {
       ctx.fill();
     }
 
-    // 2. Collar scoop depth shadow
+    // =========================================================================
+    // 2. COLLAR RIBBING, NECK HOLE MASKING & CLAVICLE SHADOW
+    // (Cảm giác cổ chui qua cổ áo chân thực)
+    // =========================================================================
     const neckP = mesh[0][midCol];
     const chestP = mesh[1][midCol];
-    const collarRadius = Math.max(16, Math.hypot(chestP.x - neckP.x, chestP.y - neckP.y) * 1.5);
-    const collarGrad = ctx.createRadialGradient(neckP.x, neckP.y, 2, neckP.x, neckP.y, collarRadius);
-    collarGrad.addColorStop(0, 'rgba(0, 0, 0, 0.28)');
+    const collarRadius = Math.max(16, Math.hypot(chestP.x - neckP.x, chestP.y - neckP.y) * 1.6);
+
+    // Deep ambient occlusion inside collar scoop onto clavicle
+    ctx.globalCompositeOperation = 'multiply';
+    ctx.globalAlpha = 0.32 * smoothness;
+    const collarGrad = ctx.createRadialGradient(neckP.x, neckP.y - 2, 2, neckP.x, neckP.y + 10, collarRadius);
+    collarGrad.addColorStop(0, 'rgba(10, 8, 6, 0.55)');
+    collarGrad.addColorStop(0.45, 'rgba(10, 8, 6, 0.22)');
     collarGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
     ctx.fillStyle = collarGrad;
     ctx.beginPath();
-    ctx.arc(neckP.x, neckP.y, collarRadius, 0, Math.PI * 2);
+    ctx.arc(neckP.x, neckP.y + 4, collarRadius, 0, Math.PI * 2);
     ctx.fill();
 
-    // 3. Center chest soft highlight (fabric sheen conforming to torso curve)
+    // Curved collar ribbing seam (rib-knit neckline trim)
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.25)';
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.moveTo(mesh[0][1].x, mesh[0][1].y);
+    ctx.quadraticCurveTo(neckP.x, neckP.y + collarRadius * 0.45, mesh[0][cols - 2].x, mesh[0][cols - 2].y);
+    ctx.stroke();
+
+    // =========================================================================
+    // 3. UNDERARM / ARMPIT DRAPING TENSION CREASES (Nếp gấp nách vải co giãn)
+    // =========================================================================
+    if (showCreases) {
+      // Left armpit tension creases radiating toward chest/sternum
+      const lArmpit = mesh[2][1];
+      const sternum = mesh[3][midCol];
+      const rArmpit = mesh[2][cols - 2];
+
+      ctx.globalCompositeOperation = 'multiply';
+      ctx.globalAlpha = 0.14 * smoothness;
+      ctx.strokeStyle = 'rgba(0, 0, 0, 0.55)';
+      ctx.lineWidth = 2.4;
+
+      // Crease 1: Left armpit toward sternum
+      ctx.beginPath();
+      ctx.moveTo(lArmpit.x, lArmpit.y);
+      ctx.quadraticCurveTo(
+        (lArmpit.x + sternum.x) * 0.5 - 6,
+        (lArmpit.y + sternum.y) * 0.5 + 8,
+        sternum.x - 15,
+        sternum.y - 8
+      );
+      ctx.stroke();
+
+      // Crease 2: Right armpit toward sternum
+      ctx.beginPath();
+      ctx.moveTo(rArmpit.x, rArmpit.y);
+      ctx.quadraticCurveTo(
+        (rArmpit.x + sternum.x) * 0.5 + 6,
+        (rArmpit.y + sternum.y) * 0.5 + 8,
+        sternum.x + 15,
+        sternum.y - 8
+      );
+      ctx.stroke();
+
+      // Subtle paired soft-light highlights on top of creases
+      ctx.globalCompositeOperation = 'soft-light';
+      ctx.globalAlpha = 0.18 * smoothness;
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
+      ctx.lineWidth = 2.0;
+
+      ctx.beginPath();
+      ctx.moveTo(lArmpit.x, lArmpit.y - 3);
+      ctx.quadraticCurveTo(
+        (lArmpit.x + sternum.x) * 0.5 - 6,
+        (lArmpit.y + sternum.y) * 0.5 + 5,
+        sternum.x - 15,
+        sternum.y - 11
+      );
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.moveTo(rArmpit.x, rArmpit.y - 3);
+      ctx.quadraticCurveTo(
+        (rArmpit.x + sternum.x) * 0.5 + 6,
+        (rArmpit.y + sternum.y) * 0.5 + 5,
+        sternum.x + 15,
+        sternum.y - 11
+      );
+      ctx.stroke();
+
+      // =========================================================================
+      // 4. WAIST & HEMLINE UNDULATING DRAPING WAVES (Nếp rủ & lượn sóng tà áo)
+      // =========================================================================
+      ctx.globalCompositeOperation = 'multiply';
+      ctx.globalAlpha = 0.12 * smoothness;
+      for (let c = 1; c < cols - 1; c++) {
+        const topFold = mesh[rows - 3][c];
+        const botFold = mesh[rows - 1][c];
+        if (c % 2 === 1) {
+          // Soft vertical shadow ribbon
+          const foldGrad = ctx.createLinearGradient(topFold.x - 8, topFold.y, topFold.x + 8, topFold.y);
+          foldGrad.addColorStop(0, 'rgba(0,0,0,0)');
+          foldGrad.addColorStop(0.5, 'rgba(0,0,0,0.4)');
+          foldGrad.addColorStop(1, 'rgba(0,0,0,0)');
+          ctx.fillStyle = foldGrad;
+          ctx.beginPath();
+          ctx.moveTo(topFold.x - 6, topFold.y);
+          ctx.lineTo(topFold.x + 6, topFold.y);
+          ctx.lineTo(botFold.x + 8, botFold.y);
+          ctx.lineTo(botFold.x - 8, botFold.y);
+          ctx.closePath();
+          ctx.fill();
+        }
+      }
+    }
+
+    // =========================================================================
+    // 5. SLEEVE OPENING 3D HOLLOW DEPTH (Cánh tay luồn bên trong ống tay)
+    // =========================================================================
+    const leftSleeveCuff = mesh[2][0];
+    const rightSleeveCuff = mesh[2][cols - 1];
+    const sleeveRadius = Math.max(14, fit.shoulderWidth * 0.14);
+
+    ctx.globalCompositeOperation = 'multiply';
+    ctx.globalAlpha = 0.22 * smoothness;
+
+    // Left sleeve inner shadow
+    const lSleeveGrad = ctx.createRadialGradient(leftSleeveCuff.x, leftSleeveCuff.y, 2, leftSleeveCuff.x + 6, leftSleeveCuff.y, sleeveRadius);
+    lSleeveGrad.addColorStop(0, 'rgba(0,0,0,0.45)');
+    lSleeveGrad.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = lSleeveGrad;
+    ctx.beginPath();
+    ctx.arc(leftSleeveCuff.x, leftSleeveCuff.y, sleeveRadius, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Right sleeve inner shadow
+    const rSleeveGrad = ctx.createRadialGradient(rightSleeveCuff.x, rightSleeveCuff.y, 2, rightSleeveCuff.x - 6, rightSleeveCuff.y, sleeveRadius);
+    rSleeveGrad.addColorStop(0, 'rgba(0,0,0,0.45)');
+    rSleeveGrad.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = rSleeveGrad;
+    ctx.beginPath();
+    ctx.arc(rightSleeveCuff.x, rightSleeveCuff.y, sleeveRadius, 0, Math.PI * 2);
+    ctx.fill();
+
+    // =========================================================================
+    // 6. MATTE COMBED COTTON SHEEN & STERNUM HIGHLIGHT (Vải đầm mịn cao cấp)
+    // =========================================================================
     ctx.globalCompositeOperation = 'soft-light';
-    ctx.globalAlpha = 0.20;
+    ctx.globalAlpha = 0.22 * smoothness;
     const chestHighlight = ctx.createLinearGradient(
       mesh[2][midCol - 1].x, mesh[2][midCol - 1].y,
       mesh[2][midCol + 1].x, mesh[2][midCol + 1].y
     );
     chestHighlight.addColorStop(0, 'rgba(255,255,255,0)');
-    chestHighlight.addColorStop(0.5, 'rgba(255,255,255,0.7)');
+    chestHighlight.addColorStop(0.5, 'rgba(255,255,255,0.75)');
     chestHighlight.addColorStop(1, 'rgba(255,255,255,0)');
     ctx.fillStyle = chestHighlight;
     ctx.beginPath();
@@ -1593,6 +1731,27 @@ export class VirtualTryOnWidget {
     ctx.lineTo(mesh[rows - 2][midCol - 1].x, mesh[rows - 2][midCol - 1].y);
     ctx.closePath();
     ctx.fill();
+
+    // =========================================================================
+    // 7. SOFT FIBER EDGE BLEND (Làm mịn êm dịu mép viền vải)
+    // =========================================================================
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.globalAlpha = 0.28 * smoothness;
+    ctx.strokeStyle = 'rgba(20, 20, 20, 0.18)';
+    ctx.lineWidth = 1.4;
+    // Trace outer perimeter to soften triangle pixel steps
+    ctx.beginPath();
+    // Top shoulder boundary
+    ctx.moveTo(mesh[0][0].x, mesh[0][0].y);
+    for (let c = 1; c < cols; c++) ctx.lineTo(mesh[0][c].x, mesh[0][c].y);
+    // Right flank
+    for (let r = 1; r < rows; r++) ctx.lineTo(mesh[r][cols - 1].x, mesh[r][cols - 1].y);
+    // Bottom hem
+    for (let c = cols - 2; c >= 0; c--) ctx.lineTo(mesh[rows - 1][c].x, mesh[rows - 1][c].y);
+    // Left flank
+    for (let r = rows - 2; r >= 0; r--) ctx.lineTo(mesh[r][0].x, mesh[r][0].y);
+    ctx.closePath();
+    ctx.stroke();
 
     ctx.restore();
   }
@@ -2492,6 +2651,14 @@ export class VirtualTryOnWidget {
                     <input type="range" id="vton-mesh-tightness-slider" min="20" max="100" value="85" class="w-full accent-neutral-950 cursor-pointer" />
                   </div>
 
+                  <div>
+                    <div class="flex justify-between text-[11px] mb-0.5">
+                      <span class="text-neutral-600">Độ mượt & rủ vải (Smooth):</span>
+                      <span id="vton-fabric-smoothness-val" class="font-mono font-semibold">88%</span>
+                    </div>
+                    <input type="range" id="vton-fabric-smoothness-slider" min="30" max="100" value="88" class="w-full accent-neutral-950 cursor-pointer" />
+                  </div>
+
                   <div class="flex items-center justify-between text-[11px] pt-1">
                     <label class="inline-flex items-center gap-1.5 cursor-pointer text-neutral-700">
                       <input type="checkbox" id="vton-shading3d-toggle" checked class="rounded accent-emerald-600" />
@@ -2499,7 +2666,11 @@ export class VirtualTryOnWidget {
                     </label>
                     <label class="inline-flex items-center gap-1.5 cursor-pointer text-neutral-700">
                       <input type="checkbox" id="vton-organic-motion-toggle" checked class="rounded accent-emerald-600" />
-                      <span>Độ rủ & nhịp thở</span>
+                      <span>Độ rủ nhịp thở</span>
+                    </label>
+                    <label class="inline-flex items-center gap-1.5 cursor-pointer text-neutral-700">
+                      <input type="checkbox" id="vton-creases-toggle" checked class="rounded accent-emerald-600" />
+                      <span>Nếp gấp vải</span>
                     </label>
                   </div>
                 </div>
@@ -2609,8 +2780,11 @@ export class VirtualTryOnWidget {
       dynamicMeshToggle: wrapper.querySelector('#vton-dynamic-mesh-toggle'),
       meshTightnessSlider: wrapper.querySelector('#vton-mesh-tightness-slider'),
       meshTightnessVal: wrapper.querySelector('#vton-mesh-tightness-val'),
+      fabricSmoothnessSlider: wrapper.querySelector('#vton-fabric-smoothness-slider'),
+      fabricSmoothnessVal: wrapper.querySelector('#vton-fabric-smoothness-val'),
       shading3dToggle: wrapper.querySelector('#vton-shading3d-toggle'),
       organicMotionToggle: wrapper.querySelector('#vton-organic-motion-toggle'),
+      creasesToggle: wrapper.querySelector('#vton-creases-toggle'),
       meshControls: wrapper.querySelector('#vton-mesh-controls'),
       resetFitBtn: wrapper.querySelector('#vton-reset-fit-btn'),
       toast: wrapper.querySelector('#vton-toast'),
@@ -2752,6 +2926,15 @@ export class VirtualTryOnWidget {
       this.arSettings.organicMotion = e.target.checked;
       this._refreshStaticFallbackLive();
     });
+    this.el.fabricSmoothnessSlider?.addEventListener('input', (e) => {
+      this.arSettings.fabricSmoothness = Number(e.target.value);
+      if (this.el.fabricSmoothnessVal) this.el.fabricSmoothnessVal.textContent = `${this.arSettings.fabricSmoothness}%`;
+      this._refreshStaticFallbackLive();
+    });
+    this.el.creasesToggle?.addEventListener('change', (e) => {
+      this.arSettings.organicCreases = e.target.checked;
+      this._refreshStaticFallbackLive();
+    });
 
     this.el.resetFitBtn.addEventListener('click', () => {
       this.arSettings.offsetX = 0;
@@ -2765,6 +2948,8 @@ export class VirtualTryOnWidget {
       this.arSettings.meshTightness = 85;
       this.arSettings.shading3D = true;
       this.arSettings.organicMotion = true;
+      this.arSettings.fabricSmoothness = 88;
+      this.arSettings.organicCreases = true;
       this.el.offsetXSlider.value = '0';
       this.el.offsetYSlider.value = '0';
       this.el.scaleXSlider.value = '100';
@@ -2781,8 +2966,11 @@ export class VirtualTryOnWidget {
       if (this.el.dynamicMeshToggle) this.el.dynamicMeshToggle.checked = true;
       if (this.el.meshTightnessSlider) this.el.meshTightnessSlider.value = '85';
       if (this.el.meshTightnessVal) this.el.meshTightnessVal.textContent = '85%';
+      if (this.el.fabricSmoothnessSlider) this.el.fabricSmoothnessSlider.value = '88';
+      if (this.el.fabricSmoothnessVal) this.el.fabricSmoothnessVal.textContent = '88%';
       if (this.el.shading3dToggle) this.el.shading3dToggle.checked = true;
       if (this.el.organicMotionToggle) this.el.organicMotionToggle.checked = true;
+      if (this.el.creasesToggle) this.el.creasesToggle.checked = true;
       if (this.el.meshControls) {
         this.el.meshControls.style.opacity = '1';
         this.el.meshControls.style.pointerEvents = 'auto';
