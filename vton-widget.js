@@ -22,6 +22,85 @@ const CLOTHES_SEGMENTER_MODEL_URL =
 const GRADIO_CLIENT_CDN =
   'https://cdn.jsdelivr.net/npm/@gradio/client/+esm';
 
+const DEFAULT_STREETWEAR_PRESETS = [
+  {
+    id: 'darc-golds-gym-tee',
+    name: 'Áo Thun Darc Sport × Gold\'s Gym "Gold\'s Wolf"',
+    price: '1.150.000₫',
+    image: './assets/garments/darc-golds-gym-tee.png',
+    category: 'tee',
+    description: 'Darc Sport × Gold\'s Gym Premium Tee in Black',
+  },
+  {
+    id: 'darc-city-of-angels-tee',
+    name: 'Áo Thun Darc Sport "City of Angels" Wolves LA',
+    price: '1.150.000₫',
+    image: './assets/garments/darc-city-of-angels-tee.png',
+    category: 'tee',
+    description: 'Darc Sport "City of Angels" Premium Tee in Black',
+  },
+  {
+    id: 'darc-naruto-sakura-tee',
+    name: 'Áo Thun Darc Sport × Naruto (Sakura Final Drop)',
+    price: '1.250.000₫',
+    image: './assets/garments/darc-naruto-sakura-tee.png',
+    category: 'tee',
+    description: 'Darc Sport × Naruto FINAL DROP Sakura Tee',
+  },
+  {
+    id: 'civil-jujutsu-kaisen-tee',
+    name: 'Áo Thun Civil Regime × Jujutsu Kaisen (Itadori)',
+    price: '1.250.000₫',
+    image: './assets/garments/civil-jujutsu-kaisen-tee.png',
+    category: 'tee',
+    description: 'Civil Regime × Jujutsu Kaisen Yuji Itadori Tee',
+  },
+  {
+    id: 'darc-backpack-front',
+    name: 'Balo Darc Sport "Wolves Club" Tactical',
+    price: '1.650.000₫',
+    image: './assets/garments/darc-backpack-front.png',
+    category: 'tee',
+    description: 'Balo Streetwear Darc Sport Wolves Club',
+  },
+  {
+    id: 'darc-backpack-back',
+    name: 'Balo Darc Sport "Wolves Club" (Quai đeo)',
+    price: '1.650.000₫',
+    image: './assets/garments/darc-backpack-back.png',
+    category: 'tee',
+    description: 'Mặt lưng balo quai đeo trợ lực',
+  },
+  {
+    id: 'png-tee-black',
+    name: 'Áo Thun Oversize (PNG)',
+    price: '490.000₫',
+    image: './assets/garments/tee-black.png',
+    category: 'tee',
+  },
+  {
+    id: 'png-jacket-camel',
+    name: 'Blazer Len Camel (PNG)',
+    price: '1.890.000₫',
+    image: './assets/garments/jacket-camel.png',
+    category: 'jacket',
+  },
+  {
+    id: 'png-dress-burgundy',
+    name: 'Váy Lụa Satin Midi (PNG)',
+    price: '1.450.000₫',
+    image: './assets/garments/dress-burgundy.png',
+    category: 'dress',
+  },
+  {
+    id: 'png-shirt-emerald',
+    name: 'Sơ Mi Lụa Emerald (PNG)',
+    price: '890.000₫',
+    image: './assets/garments/shirt-emerald.png',
+    category: 'shirt',
+  },
+];
+
 /**
  * Garment geometry multipliers per category so silhouettes map
  * naturally onto shoulders (11, 12) and hips (23, 24).
@@ -207,9 +286,17 @@ export class VirtualTryOnWidget {
     this._mountEditorDOM();
     this._bindEvents();
 
-    // Auto-load catalog from window.LALIN_PRODUCTS if present on page
-    if (typeof window !== 'undefined' && Array.isArray(window.LALIN_PRODUCTS)) {
-      this.setCatalog(this._convertLalinCatalog(window.LALIN_PRODUCTS));
+    // Auto-load catalog with presets + Lalin products
+    if (typeof window !== 'undefined') {
+      const presets = Array.isArray(window.FREE_VTON_PNG_PRESETS) && window.FREE_VTON_PNG_PRESETS.length > 0
+        ? window.FREE_VTON_PNG_PRESETS
+        : DEFAULT_STREETWEAR_PRESETS;
+      const lalin = Array.isArray(window.LALIN_PRODUCTS)
+        ? this._convertLalinCatalog(window.LALIN_PRODUCTS)
+        : [];
+      this.setCatalog([...presets, ...lalin]);
+    } else {
+      this.setCatalog(DEFAULT_STREETWEAR_PRESETS);
     }
   }
 
@@ -1939,6 +2026,7 @@ export class VirtualTryOnWidget {
               <!-- Category Filter Chips -->
               <div class="flex gap-1 overflow-x-auto py-1" id="vton-cat-filter-row">
                 <button type="button" data-cat="all" class="vton-cat-chip active px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase bg-neutral-100 text-neutral-700 shrink-0">Tất cả</button>
+                <button type="button" data-cat="tee" class="vton-cat-chip px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase bg-neutral-100 text-neutral-700 shrink-0">Áo Thun</button>
                 <button type="button" data-cat="yem" class="vton-cat-chip px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase bg-neutral-100 text-neutral-700 shrink-0">Áo Yếm</button>
                 <button type="button" data-cat="shirt" class="vton-cat-chip px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase bg-neutral-100 text-neutral-700 shrink-0">Áo Tơ</button>
                 <button type="button" data-cat="jacket" class="vton-cat-chip px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase bg-neutral-100 text-neutral-700 shrink-0">Áo Gấm</button>

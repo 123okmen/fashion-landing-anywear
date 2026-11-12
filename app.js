@@ -10,23 +10,140 @@
 (() => {
   'use strict';
 
-  const PRODUCTS = Array.isArray(window.LALIN_PRODUCTS) ? window.LALIN_PRODUCTS : [];
+  const STREETWEAR_PRODUCTS = [
+    {
+      id: 'darc-golds-gym-tee',
+      handle: 'darc-sport-golds-gym-wolf-tee',
+      url: 'https://shop.darcport.com',
+      title: 'Áo Thun Darc Sport × Gold\'s Gym "Gold\'s Wolf"',
+      category: 'tee',
+      fabric: 'Cotton 100% 280gsm · In lụa cao cấp',
+      desc: 'Thiết kế giới hạn Darc Sport kết hợp Gold\'s Gym "Gold\'s Wolf" biểu tượng thể hình cổ điển, phom oversize streetwear.',
+      price: 1150000,
+      rent: 320000,
+      sizes: ['M', 'L', 'XL'],
+      colors: ['Black'],
+      img: './assets/garments/darc-golds-gym-tee.png',
+      imgAlt: './assets/garments/darc-golds-gym-tee-preview.jpg',
+      imgFull: './assets/garments/darc-golds-gym-tee.png',
+      gallery: ['./assets/garments/darc-golds-gym-tee.png', './assets/garments/darc-golds-gym-tee-preview.jpg']
+    },
+    {
+      id: 'darc-city-of-angels-tee',
+      handle: 'darc-sport-city-of-angels-tee',
+      url: 'https://shop.darcport.com',
+      title: 'Áo Thun Darc Sport "City of Angels" Wolves LA',
+      category: 'tee',
+      fabric: 'Cotton 100% Vintage Washed · Graphic Wolves',
+      desc: 'Phiên bản City of Angels Wolves LA 2024 đậm chất thể thao đường phố Los Angeles, phom boxy fit tôn vai.',
+      price: 1150000,
+      rent: 320000,
+      sizes: ['M', 'L', 'XL'],
+      colors: ['Black'],
+      img: './assets/garments/darc-city-of-angels-tee.png',
+      imgAlt: './assets/garments/darc-city-of-angels-tee-preview.jpg',
+      imgFull: './assets/garments/darc-city-of-angels-tee.png',
+      gallery: ['./assets/garments/darc-city-of-angels-tee.png', './assets/garments/darc-city-of-angels-tee-preview.jpg']
+    },
+    {
+      id: 'darc-naruto-sakura-tee',
+      handle: 'darc-sport-naruto-sakura-tee',
+      url: 'https://shop.darcport.com',
+      title: 'Áo Thun Darc Sport × Naruto (Sakura Final Drop)',
+      category: 'tee',
+      fabric: 'Cotton 100% · Graphic Sakura Haruno Anime',
+      desc: 'Bản collab chính thức Darc Sport x Naruto Shippuden Final Drop, họa tiết Sakura Haruno và ký tự Wolves Forever.',
+      price: 1250000,
+      rent: 350000,
+      sizes: ['M', 'L', 'XL'],
+      colors: ['Black'],
+      img: './assets/garments/darc-naruto-sakura-tee.png',
+      imgAlt: './assets/garments/darc-naruto-sakura-tee-preview.jpg',
+      imgFull: './assets/garments/darc-naruto-sakura-tee.png',
+      gallery: ['./assets/garments/darc-naruto-sakura-tee.png', './assets/garments/darc-naruto-sakura-tee-preview.jpg']
+    },
+    {
+      id: 'civil-jujutsu-kaisen-tee',
+      handle: 'civil-regime-jujutsu-kaisen-itadori-tee',
+      url: 'https://civilregime.com',
+      title: 'Áo Thun Civil Regime × Jujutsu Kaisen (Itadori Yuji)',
+      category: 'tee',
+      fabric: 'Heavyweight Cotton · Black Acid Wash',
+      desc: 'Sự kết hợp giữa Civil Regime và anime Jujutsu Kaisen với hình ảnh Yuji Itadori bùng nổ sức mạnh Chú thuật hồi chiến.',
+      price: 1250000,
+      rent: 350000,
+      sizes: ['M', 'L', 'XL'],
+      colors: ['Black'],
+      img: './assets/garments/civil-jujutsu-kaisen-tee.png',
+      imgAlt: './assets/garments/civil-jujutsu-kaisen-tee-preview.jpg',
+      imgFull: './assets/garments/civil-jujutsu-kaisen-tee.png',
+      gallery: ['./assets/garments/civil-jujutsu-kaisen-tee.png', './assets/garments/civil-jujutsu-kaisen-tee-preview.jpg']
+    },
+    {
+      id: 'darc-backpack-front',
+      handle: 'darc-sport-wolves-club-backpack-front',
+      url: 'https://shop.darcport.com',
+      title: 'Balo Darc Sport "Wolves Club" Tactical (Mặt Trước)',
+      category: 'phu-kien',
+      fabric: 'Cordura chống nước · Khóa bấm kim loại Tactical',
+      desc: 'Balo phong cách chiến thuật Wolves Club với họa tiết chữ gothic thêu nổi tinh xảo, ngăn chứa đa năng tiện dụng.',
+      price: 1650000,
+      rent: 450000,
+      sizes: ['One Size'],
+      colors: ['Black / White'],
+      img: './assets/garments/darc-backpack-front.png',
+      imgAlt: './assets/garments/darc-backpack-front-preview.jpg',
+      imgFull: './assets/garments/darc-backpack-front.png',
+      gallery: ['./assets/garments/darc-backpack-front.png', './assets/garments/darc-backpack-front-preview.jpg']
+    },
+    {
+      id: 'darc-backpack-back',
+      handle: 'darc-sport-wolves-club-backpack-back',
+      url: 'https://shop.darcport.com',
+      title: 'Balo Darc Sport "Wolves Club" Tactical (Quai Đeo)',
+      category: 'phu-kien',
+      fabric: 'Cordura chống nước · Đệm lưng thoáng khí',
+      desc: 'Mặt lưng balo Darc Sport Wolves Club với quai đeo trợ lực và khóa ngực thể thao chắc chắn.',
+      price: 1650000,
+      rent: 450000,
+      sizes: ['One Size'],
+      colors: ['Black / White'],
+      img: './assets/garments/darc-backpack-back.png',
+      imgAlt: './assets/garments/darc-backpack-back-preview.jpg',
+      imgFull: './assets/garments/darc-backpack-back.png',
+      gallery: ['./assets/garments/darc-backpack-back.png', './assets/garments/darc-backpack-back-preview.jpg']
+    }
+  ];
+
+  const PRODUCTS = [
+    ...STREETWEAR_PRODUCTS,
+    ...(Array.isArray(window.LALIN_PRODUCTS) ? window.LALIN_PRODUCTS : [])
+  ];
   const $ = (sel, root = document) => root.querySelector(sel);
   const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
   const fmt = (n) => `${Number(n || 0).toLocaleString('vi-VN')}₫`;
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const isHoverDevice = window.matchMedia('(hover: hover)').matches;
 
-  const SHORT_LABELS = { yem: 'YẾM', 'to-lua': 'TƠ TẰM', gam: 'GẤM', khoac: 'KHOÁC', set: 'SET', 'phu-kien': 'CÀI ÁO' };
+  const SHORT_LABELS = {
+    tee: 'ÁO THUN',
+    yem: 'YẾM',
+    'to-lua': 'TƠ TẰM',
+    gam: 'GẤM',
+    khoac: 'KHOÁC',
+    set: 'SET',
+    'phu-kien': 'BALO & PHỤ KIỆN'
+  };
 
   const CATEGORY_LABELS = {
     all: 'Tất cả',
+    tee: 'Áo Thun Streetwear (Mới)',
     yem: 'Áo Yếm & Cổ Yếm',
     'to-lua': 'Áo Tơ Tằm & Lụa',
     gam: 'Gấm · Taffeta · Đính Kết',
     khoac: 'Áo Khoác & Choàng Ren',
     set: 'Set Kim Sa',
-    'phu-kien': 'Cài Áo'
+    'phu-kien': 'Balo & Cài Áo'
   };
 
   const CHAPTER_LABELS = {
@@ -105,6 +222,54 @@
    */
   const FREE_VTON_PNG_PRESETS = [
     {
+      id: 'darc-golds-gym-tee',
+      name: 'Áo Thun Darc Sport × Gold\'s Gym "Gold\'s Wolf"',
+      price: '1.150.000₫',
+      image: './assets/garments/darc-golds-gym-tee.png',
+      category: 'tee',
+      description: 'Darc Sport × Gold\'s Gym Premium Tee in Black'
+    },
+    {
+      id: 'darc-city-of-angels-tee',
+      name: 'Áo Thun Darc Sport "City of Angels" Wolves LA',
+      price: '1.150.000₫',
+      image: './assets/garments/darc-city-of-angels-tee.png',
+      category: 'tee',
+      description: 'Darc Sport "City of Angels" Premium Tee in Black'
+    },
+    {
+      id: 'darc-naruto-sakura-tee',
+      name: 'Áo Thun Darc Sport × Naruto (Sakura Final Drop)',
+      price: '1.250.000₫',
+      image: './assets/garments/darc-naruto-sakura-tee.png',
+      category: 'tee',
+      description: 'Darc Sport × Naruto FINAL DROP Sakura Tee'
+    },
+    {
+      id: 'civil-jujutsu-kaisen-tee',
+      name: 'Áo Thun Civil Regime × Jujutsu Kaisen (Itadori)',
+      price: '1.250.000₫',
+      image: './assets/garments/civil-jujutsu-kaisen-tee.png',
+      category: 'tee',
+      description: 'Civil Regime × Jujutsu Kaisen Yuji Itadori Tee'
+    },
+    {
+      id: 'darc-backpack-front',
+      name: 'Balo Darc Sport "Wolves Club" Tactical',
+      price: '1.650.000₫',
+      image: './assets/garments/darc-backpack-front.png',
+      category: 'tee',
+      description: 'Balo Streetwear Darc Sport Wolves Club'
+    },
+    {
+      id: 'darc-backpack-back',
+      name: 'Balo Darc Sport "Wolves Club" (Quai đeo)',
+      price: '1.650.000₫',
+      image: './assets/garments/darc-backpack-back.png',
+      category: 'tee',
+      description: 'Mặt lưng balo quai đeo trợ lực'
+    },
+    {
       id: 'png-tee-black',
       name: 'Áo Thun Oversize (PNG)',
       price: '490.000₫',
@@ -133,6 +298,7 @@
       category: 'shirt'
     }
   ];
+  window.FREE_VTON_PNG_PRESETS = FREE_VTON_PNG_PRESETS;
 
   function toFreeVtonProduct(p) {
     if (!p) return FREE_VTON_PNG_PRESETS[0];
