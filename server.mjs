@@ -35,11 +35,30 @@ const MIME_TYPES = {
 };
 
 const tasks = new Map();
+const MAX_TASKS = 200;
+const BLOCKED_STATIC_FILES = new Set(['server.mjs', 'package.json', 'package-lock.json', '.env', 'README.md']);
+
+const SECURITY_HEADERS = {
+  'X-Content-Type-Options': 'nosniff',
+  'X-Frame-Options': 'SAMEORIGIN',
+  'Referrer-Policy': 'strict-origin-when-cross-origin',
+  'Permissions-Policy': 'camera=(self), microphone=(), geolocation=()',
+  'Cross-Origin-Opener-Policy': 'same-origin'
+};
+
+function storeTask(taskId, payload) {
+  if (tasks.size >= MAX_TASKS) {
+    const oldestKey = tasks.keys().next().value;
+    if (oldestKey) tasks.delete(oldestKey);
+  }
+  tasks.set(taskId, { ...payload, createdAt: Date.now() });
+}
 
 function sendJson(res, status, data) {
   res.writeHead(status, {
+    ...SECURITY_HEADERS,
     'Content-Type': 'application/json; charset=utf-8',
-    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Origin': 'http://localhost:' + port,
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type',
     'Cache-Control': 'no-store'
@@ -186,13 +205,13 @@ const server = http.createServer(async (req, res) => {
 
   // 7. POST /api/vto/start & GET /api/vto/status/:taskId
   if (pathname === '/api/vto/start' && req.method === 'POST') {
-    const body = await readBody(req);
+    const body = await readBody(req).catch(() => ({}));
     const taskId = `vto_${crypto.randomUUID()}`;
-    tasks.set(taskId, {
+    const safeMime = /^image\/(jpeg|png|webp)$/i.test(String(body.mime || '')) ? body.mime : 'image/jpeg';
+    const cleanB64 = typeof body.garmentBase64 === 'string' ? body.garmentBase64.replace(/[^A-Za-z0-9+/=]/g, '') : '';
+    storeTask(taskId, {
       status: 'success',
-      url: body.garmentBase64
-        ? `data:${body.mime || 'image/jpeg'};base64,${body.garmentBase64}`
-        : ''
+      url: cleanB64 ? `data:${safeMime};base64,${cleanB64}` : ''
     });
     return sendJson(res, 200, { taskId });
   }
@@ -249,9 +268,25 @@ const server = http.createServer(async (req, res) => {
       };
 
       const selectedMeta = MODEL_META[modelId] || MODEL_META['idm-vton'];
+      const ALLOWED_VTON_ORIGINS = new Set([
+        'https://yisol-idm-vton.hf.space',
+        'https://zhengchong-catvton.hf.space',
+        'https://levihsu-ootdiffusion.hf.space',
+        ...(process.env.VTON_GPU_ENDPOINT ? [new URL(process.env.VTON_GPU_ENDPOINT).origin] : [])
+      ]);
 
-      // If a self-hosted GPU FastAPI/Docker endpoint is configured, forward the payload
-      if (customEndpoint && /^https?:\/\//i.test(customEndpoint) && !customEndpoint.includes('localhost:8090')) {
+      // SSRF Hardened: Only forward to allowlisted VTON origins or server-configured VTON_GPU_ENDPOINT
+      let safeOriginOk = false;
+      try {
+        if (customEndpoint) {
+          const parsedEp = new URL(customEndpoint);
+          safeOriginOk = parsedEp.protocol === 'https:' && ALLOWED_VTON_ORIGINS.has(parsedEp.origin);
+        }
+      } catch {
+        safeOriginOk = false;
+      }
+
+      if (safeOriginOk) {
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), 25000);
         try {
@@ -296,25 +331,34 @@ const server = http.createServer(async (req, res) => {
         zeroLicenseFee: true
       });
     } catch (err) {
-      return sendJson(res, 400, { ok: false, error: err.message || 'Invalid VTON payload' });
+      return sendJson(res, 400, { ok: false, error: 'Invalid VTON payload' });
     }
   }
 
-  // Static files fallback
+  // Static files fallback (Hardened against Path Traversal & Source Code Disclosure)
   let relPath = pathname === '/' ? '/index.html' : pathname;
   const filePath = path.resolve(root, '.' + relPath);
-  if (!filePath.startsWith(root)) {
-    res.writeHead(403);
+  const baseName = path.basename(filePath);
+  const ext = path.extname(filePath).toLowerCase();
+  if (
+    (filePath !== path.join(root, 'index.html') && !filePath.startsWith(root + path.sep)) ||
+    BLOCKED_STATIC_FILES.has(baseName) ||
+    baseName.startsWith('.') ||
+    !Object.prototype.hasOwnProperty.call(MIME_TYPES, ext)
+  ) {
+    res.writeHead(403, SECURITY_HEADERS);
     return res.end('Forbidden');
   }
   try {
     const stat = fs.statSync(filePath);
     if (!stat.isFile()) throw new Error('Not a file');
-    const ext = path.extname(filePath).toLowerCase();
-    res.writeHead(200, { 'Content-Type': MIME_TYPES[ext] || 'application/octet-stream' });
+    res.writeHead(200, {
+      ...SECURITY_HEADERS,
+      'Content-Type': MIME_TYPES[ext] || 'application/octet-stream'
+    });
     fs.createReadStream(filePath).pipe(res);
   } catch {
-    res.writeHead(404);
+    res.writeHead(404, SECURITY_HEADERS);
     res.end('Not found');
   }
 });
