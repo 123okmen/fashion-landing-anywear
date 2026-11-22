@@ -436,14 +436,15 @@
   // ==========================================================================
   // 2. SCROLL REVEAL
   // ==========================================================================
-  const revealObserver = 'IntersectionObserver' in window
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const revealObserver = 'IntersectionObserver' in window && !reduceMotion
     ? new IntersectionObserver((entries) => {
       entries.forEach((entry) => {
         if (!entry.isIntersecting) return;
         const el = entry.target;
         el.classList.add('in-view');
         revealObserver.unobserve(el);
-        setTimeout(() => el.classList.remove('reveal'), 1000);
+        setTimeout(() => el.classList.remove('reveal'), 700);
       });
     }, { threshold: 0.08, rootMargin: '0px 0px -40px 0px' })
     : null;

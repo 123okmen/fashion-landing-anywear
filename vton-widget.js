@@ -2373,7 +2373,7 @@ export class VirtualTryOnWidget {
         <div class="flex-1 overflow-hidden grid grid-cols-1 md:grid-cols-12 min-h-0 bg-neutral-950">
           <!-- Canvas Viewport -->
           <div class="md:col-span-8 relative flex items-center justify-center p-4 bg-neutral-900/60 overflow-hidden select-none touch-none">
-            <div id="vton-crop-viewport" class="relative max-w-full max-h-[60vh] aspect-[3/4] flex items-center justify-center shadow-lg border border-neutral-800 bg-[radial-gradient(#333_1px,transparent_1px)] [background-size:16px_16px]">
+            <div id="vton-crop-viewport" class="relative max-w-full max-h-[60vh] aspect-[3/4] flex items-center justify-center shadow-lg border border-neutral-800 bg-[#333] [background-size:16px_16px]">
               <canvas id="vton-editor-canvas" class="max-w-full max-h-full block"></canvas>
               <!-- Interactive Crop Box Overlay -->
               <div id="vton-crop-box" class="absolute border-2 border-emerald-400 bg-emerald-400/10 pointer-events-auto cursor-move">

@@ -6,12 +6,16 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>LALIN × STRESSMAMA × MINDE | Anywear (Decart AI) Live Camera Virtual Try-On</title>
-  <meta name="description" content="Landing page thời trang Lalin.vn × Stressmama.vn × Minde.vn tích hợp mặc định Anywear (thuộc Decart AI) — giải pháp thử đồ ảo trực tiếp qua camera với 1 dòng code trước </body>, tự động nhận diện sản phẩm và gắn nút Try-On." />
+  <meta name="description" content="Landing page thời trang Lalin.vn × Stressmama.vn × Minde.vn tích hợp mặc định Anywear (thuộc Decart AI) — giải pháp thử đồ ảo trực tiếp qua camera với 1 dòng code trước <script>
+/* fail-safe: khong de noi dung bi an neu scroll-reveal khong kich hoat */
+setTimeout(function(){document.querySelectorAll('.reveal,[class*="reveal"]').forEach(function(el){el.classList.add('visible','is-visible','in-view','revealed');});},1800);
+</script>
+</body>, tự động nhận diện sản phẩm và gắn nút Try-On." />
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230b0c0e'/%3E%3Ccircle cx='16' cy='16' r='7' fill='%23c8ff2e'/%3E%3C/svg%3E" />
   <!-- Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,600&family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Syne:wght@600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css" />
   <!-- Structured Data for Store Collection Catalog (allows Anywear Decart AI to auto-detect all product cards) -->
   <script type="application/ld+json">
@@ -67,6 +71,7 @@
     </div>
   </header>
 
+  <main class="page-main">
   <!-- HERO SECTION -->
   <section class="hero-section">
     <div class="hero-bg-accent"></div>
@@ -91,7 +96,7 @@
           <span>✦</span> Mở Camera Thử Đồ Anywear (Decart AI)
         </button>
         <a href="#anywear-extension-hub" class="btn-secondary-outline">
-          Xem Cơ Chế Nhúng 1 Dòng Code &amp; Chính Sách
+          Xem Cơ Chế Nhúng 1 Dòng Code
         </a>
       </div>
 
@@ -281,7 +286,7 @@
             placeholder="Dán link ảnh hoặc link sản phẩm (Lalin.vn, ShopAnywear.com, Pinterest...)"
             aria-label="Dán link ảnh hoặc link sản phẩm"
           />
-          <button type="submit" class="btn-aw-use-link">Thử Link Này</button>
+          <button type="submit" class="btn-aw-use-link">Dùng Link Này</button>
         </form>
 
         <div class="aw-hub-foot">
@@ -369,7 +374,7 @@
               Áo gấm Tiên Khuê — 2.800.000₫
             </h4>
           </div>
-          <span style="font-family: var(--font-mono); font-size: 11px; color: var(--accent-gold);">
+          <span style="font-family: var(--font-mono); font-size: 11px; color: var(--accent);">
             Di chuột ngang để chuyển cảnh ⇄
           </span>
         </div>
@@ -392,7 +397,7 @@
         </div>
 
         <div class="red-villa-card" style="background: rgba(255,255,255,0.03); border-color: var(--border-subtle);" id="anywear-guide">
-          <span class="ref-tag" style="color: #b8ff2c;">TÍCH HỢP MẶC ĐỊNH ANYWEAR (DECART AI)</span>
+          <span class="ref-tag" style="color: var(--accent);">TÍCH HỢP MẶC ĐỊNH ANYWEAR (DECART AI)</span>
           <h3 style="font-size: 20px; margin-bottom: 10px;">Thử Đồ Live Video Qua Camera &amp; Tự Động Nhận Diện</h3>
           <ul style="list-style: none; display: flex; flex-direction: column; gap: 10px; font-size: 13px; color: var(--text-muted);">
             <li><strong style="color: var(--text-light);">① Nhúng 1 dòng code (~17 KB):</strong> Đặt thẻ <code>&lt;script src="https://anywear.decart.ai/widget/latest/anywear.js" async&gt;&lt;/script&gt;</code> ngay trước <code>&lt;/body&gt;</code>.</li>
@@ -719,7 +724,7 @@
         <div class="control-group">
           <div class="control-group-title">
             <span>CHỌN SIZE, MÀU &amp; GÓC ẢNH</span>
-            <a id="studioLalinLink" href="https://lalin.vn" target="_blank" rel="noopener" style="color: var(--accent-jade); text-decoration: none;">Xem trên Lalin.vn ↗</a>
+            <a id="studioLalinLink" href="https://lalin.vn" target="_blank" rel="noopener" style="color: var(--accent); text-decoration: none;">Xem trên Lalin.vn ↗</a>
           </div>
           <div class="option-chips" id="studioSizeChips"></div>
           <div class="option-chips" id="studioColorChips" style="margin-top: 8px;"></div>
@@ -831,7 +836,7 @@
         <div class="control-group">
           <div class="control-group-title">
             <span>SỐ ĐO ĐỂ GỢI Ý SIZE LALIN</span>
-            <span id="bodySummaryLabel" style="color: var(--accent-jade);">163cm • 50kg • Eo 64cm</span>
+            <span id="bodySummaryLabel" style="color: var(--accent);">163cm • 50kg • Eo 64cm</span>
           </div>
 
           <div class="slider-row">
@@ -874,6 +879,10 @@
       </div>
     </div>
   </div>
+
+  </main>
+
+  </main>
 
   <!-- Bag Drawer -->
   <div class="bag-drawer-backdrop" id="bagDrawer" aria-hidden="true">
